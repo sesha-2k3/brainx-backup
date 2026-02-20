@@ -1,0 +1,118 @@
+# Queries: Proposal CRUD and state transitions
+
+from datetime import datetime
+from typing import Optional
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import Proposal, ProposalStatus
+
+
+async def create_proposal(
+    db: AsyncSession,
+    *,
+    source_type: str,
+    whatsapp_user_id: str,
+    extracted_data: dict,
+    source_message_id: Optional[str] = None,
+    confidence_score: Optional[float] = None,
+    tenant_id: str = "default",
+) -> Proposal:
+    proposal = Proposal(
+        tenant_id=tenant_id,
+        source_type=source_type,
+        source_message_id=source_message_id,
+        whatsapp_user_id=whatsapp_user_id,
+        extracted_data=extracted_data,
+        confidence_score=confidence_score,
+        status=ProposalStatus.PENDING,
+    )
+    db.add(proposal)
+    await db.flush()
+    return proposal
+
+
+async def get_proposal_by_id(db: AsyncSession, proposal_id: str) -> Optional[Proposal]:
+    result = await db.execute(select(Proposal).where(Proposal.id == proposal_id))
+    return result.scalar_one_or_none()
+
+
+async def get_pending_proposal_for_user(
+    db: AsyncSession,
+    whatsapp_user_id: str,
+    tenant_id: str = "default",
+) -> Optional[Proposal]:
+    """Get the most recent pending proposal for a user."""
+    result = await db.execute(
+        select(Proposal)
+        .where(
+            Proposal.tenant_id == tenant_id,
+            Proposal.whatsapp_user_id == whatsapp_user_id,
+            Proposal.status == ProposalStatus.PENDING,
+        )
+        .order_by(Proposal.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def confirm_proposal(
+    db: AsyncSession,
+    proposal_id: str,
+    contact_id: str,
+    interaction_id: Optional[str] = None,
+) -> Optional[Proposal]:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        return None
+    
+    proposal.status = ProposalStatus.CONFIRMED
+    proposal.contact_id = contact_id
+    proposal.interaction_id = interaction_id
+    proposal.resolved_at = datetime.utcnow()
+    await db.flush()
+    return proposal
+
+
+async def update_proposal_data(
+    db: AsyncSession,
+    proposal_id: str,
+    extracted_data: dict,
+) -> Optional[Proposal]:
+    """Update extracted data (for edits before confirmation)."""
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        return None
+    
+    proposal.extracted_data = extracted_data
+    proposal.status = ProposalStatus.EDITED
+    await db.flush()
+    return proposal
+
+
+async def reject_proposal(
+    db: AsyncSession,
+    proposal_id: str,
+) -> Optional[Proposal]:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if not proposal:
+        return None
+    
+    proposal.status = ProposalStatus.REJECTED
+    proposal.resolved_at = datetime.utcnow()
+    await db.flush()
+    return proposal
+
+
+async def list_pending_proposals(
+    db: AsyncSession,
+    tenant_id: str = "default",
+    limit: int = 20,
+) -> list[Proposal]:
+    result = await db.execute(
+        select(Proposal)
+        .where(Proposal.tenant_id == tenant_id, Proposal.status == ProposalStatus.PENDING)
+        .order_by(Proposal.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())

@@ -1,0 +1,26 @@
+# Web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.25
+asyncpg>=0.29.0
+alembic>=1.13.0
+
+# HTTP client
+httpx>=0.26.0
+
+# AI/ML services
+groq>=0.4.0
+pytesseract>=0.3.10
+Pillow>=10.2.0
+
+# Scheduling
+apscheduler>=3.10.4
+
+# Utilities
+python-dateutil>=2.8.2
+phonenumbers>=8.13.0
+python-multipart>=0.0.6

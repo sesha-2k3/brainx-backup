@@ -1,4 +1,4 @@
-# BrainX
+# Personal CRM
 
 Web-based personal relationship manager with AI-powered contact extraction.
 
@@ -14,7 +14,7 @@ Web-based personal relationship manager with AI-powered contact extraction.
 ### 2. Setup
 
 ```bash
-cd brainx
+cd personal-crm
 
 # Python setup
 python -m venv venv
@@ -112,7 +112,7 @@ Browser -> React SPA -> FastAPI -> PostgreSQL
 ## Project Structure
 
 ```
-brainx/
+personal-crm/
 ├── frontend/          # React SPA (Vite + Tailwind)
 │   └── src/
 │       ├── pages/     # Route pages
