@@ -122,5 +122,5 @@ personal-crm/
     ├── api/           # FastAPI routes
     ├── db/            # Database models and queries
     ├── services/      # Business logic
-    └── utils/         # Helpers
+    └── utils/         # util functions
 ```
