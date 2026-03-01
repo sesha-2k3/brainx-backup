@@ -106,7 +106,7 @@ Browser -> React SPA -> FastAPI -> PostgreSQL
                           |
                           v
                     Groq (Whisper + LLM)
-                    Tesseract (OCR)
+                    Tesseract (OCR) 
 ```
 
 ## Project Structure
