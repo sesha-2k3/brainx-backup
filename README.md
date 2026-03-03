@@ -54,7 +54,7 @@ npm run dev
 
 Open http://localhost:3000
 
-### 5. Run (Production)
+### 5. Run 
 
 ```bash
 # Build frontend
@@ -87,40 +87,3 @@ Key environment variables in `.env`:
 - **Follow-ups**: Create tasks linked to contacts
 - **Natural search**: "Who is Eddie?", "Investors I met last month"
 
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/input/text` | POST | Process text input |
-| `/api/input/file` | POST | Process voice/image upload |
-| `/api/proposals/{id}/confirm` | POST | Confirm extracted data |
-| `/api/contacts` | GET | List contacts |
-| `/api/contacts/{id}` | GET/PATCH/DELETE | Contact CRUD |
-| `/api/tasks` | GET/POST | List/create tasks |
-| `/api/search?q=` | GET | Natural language search |
-
-## Architecture
-
-```
-Browser -> React SPA -> FastAPI -> PostgreSQL
-                          |
-                          v
-                    Groq (Whisper + LLM)
-                    Tesseract (OCR) 
-```
-
-## Project Structure
-
-```
-personal-crm/
-├── frontend/          # React SPA (Vite + Tailwind)
-│   └── src/
-│       ├── pages/     # Route pages
-│       ├── components/# UI components
-│       └── api/       # API client
-└── src/               # Python backend
-    ├── api/           # FastAPI routes
-    ├── db/            # Database models and queries
-    ├── services/      # Business logic
-    └── utils/         # util functions
-```
