@@ -1,6 +1,6 @@
 # Queries: Contact CRUD and lookup operations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,3 +143,36 @@ def _build_search_vector(contact: Contact) -> str:
         contact.context or "",
     ]
     return " ".join(filter(None, parts)).lower()
+
+async def get_contacts_due_for_reminder(
+    db: AsyncSession,
+    tenant_id: str = "default",
+) -> list[Contact]:
+    """Get contacts whose next_reminder_at is due."""
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(Contact)
+        .where(
+            Contact.tenant_id == tenant_id,
+            Contact.reminder_frequency.isnot(None),
+            Contact.next_reminder_at <= now,
+        )
+        .order_by(Contact.next_reminder_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+def calculate_next_reminder(frequency: str, from_date: datetime = None) -> datetime:
+    """Calculate next reminder date based on frequency."""
+    from_date = from_date or datetime.utcnow()
+    
+    if frequency == "every_3_days":
+        return from_date + timedelta(days=3)
+    elif frequency == "weekly":
+        return from_date + timedelta(weeks=1)
+    elif frequency == "every_2_weeks":
+        return from_date + timedelta(weeks=2)
+    elif frequency == "monthly":
+        return from_date + timedelta(days=30)
+    else:
+        return None
