@@ -1,7 +1,7 @@
 [project]
-name = "personal-crm"
+name = "brainx"
 version = "0.1.0"
-description = "WhatsApp-based personal CRM"
+description = "Personal CRM"
 requires-python = ">=3.11"
 
 dependencies = [
