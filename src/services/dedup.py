@@ -20,28 +20,50 @@ async def find_duplicate(
 ) -> Optional[Contact]:
     """
     Find an existing contact that matches the extracted data.
-    Uses exact email or phone match (Phase 1 simple dedup).
+    Checks: exact email, exact phone, or exact name + company match.
     """
     email = extracted.email.lower().strip() if extracted.email else None
     phone = normalize_phone(extracted.phone) if extracted.phone else None
-    
-    if not email and not phone:
-        logger.info("No email or phone for dedup check")
-        return None
-    
-    duplicate = await contact_queries.find_duplicate_contact(
-        db,
-        email=email,
-        phone=phone,
-        tenant_id=tenant_id,
-    )
-    
-    if duplicate:
-        logger.info(f"Found duplicate contact: {duplicate.id} ({duplicate.name})")
-    else:
-        logger.info("No duplicate found")
-    
-    return duplicate
+    name = extracted.name.strip().lower() if extracted.name else None
+    company = extracted.company.strip().lower() if extracted.company else None
+
+    # First try email/phone match
+    if email or phone:
+        duplicate = await contact_queries.find_duplicate_contact(
+            db,
+            email=email,
+            phone=phone,
+            tenant_id=tenant_id,
+        )
+        if duplicate:
+            logger.info(f"Found duplicate by email/phone: {duplicate.id} ({duplicate.name})")
+            return duplicate
+
+    # Then try name + company match
+    if name:
+        contacts = await contact_queries.search_contacts_by_name(db, name, tenant_id, limit=10)
+        for contact in contacts:
+            contact_name = contact.name.strip().lower() if contact.name else ""
+            contact_company = contact.company.strip().lower() if contact.company else ""
+            
+            # Exact name match
+            if contact_name == name:
+                # If both have company, they must match
+                if company and contact_company:
+                    if company == contact_company:
+                        logger.info(f"Found duplicate by name+company: {contact.id}")
+                        return contact
+                # If no company info, name match is enough
+                elif not company and not contact_company:
+                    logger.info(f"Found duplicate by name: {contact.id}")
+                    return contact
+                # If only one has company, still consider it a match
+                elif not company or not contact_company:
+                    logger.info(f"Found duplicate by name (partial company): {contact.id}")
+                    return contact
+
+    logger.info("No duplicate found")
+    return None
 
 
 async def merge_or_create(
