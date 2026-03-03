@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from src.config import get_settings
 from src.db import get_db
@@ -57,6 +58,7 @@ class ContactUpdate(BaseModel):
     category: Optional[str] = None
     notes: Optional[str] = None
     context: Optional[str] = None
+    reminder_frequency: Optional[str] = None # For reminders.
 
 
 class TaskCreate(BaseModel):
@@ -316,11 +318,34 @@ async def list_contacts(
                 "company": c.company,
                 "role": c.role,
                 "category": c.category,
+                "reminder_frequency": c.reminder_frequency,
+                "next_reminder_at": c.next_reminder_at.isoformat() if c.next_reminder_at else None,
+                "last_contacted_at": c.last_contacted_at.isoformat() if c.last_contacted_at else None,
             }
             for c in contacts
         ]
     }
 
+@router.get("/contacts/due-reminders")
+async def get_due_reminders(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get contacts that are due for a catch-up."""
+    contacts = await contact_queries.get_contacts_due_for_reminder(db, settings.tenant_id)
+    
+    return {
+        "contacts": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "company": c.company,
+                "reminder_frequency": c.reminder_frequency,
+                "next_reminder_at": c.next_reminder_at.isoformat() if c.next_reminder_at else None,
+                "last_contacted_at": c.last_contacted_at.isoformat() if c.last_contacted_at else None,
+            }
+            for c in contacts
+        ]
+    }
 
 @router.get("/contacts/{contact_id}")
 async def get_contact(
@@ -396,12 +421,94 @@ async def delete_contact(
     contact_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a contact."""
+    """Delete a contact and all related data."""
     contact = await contact_queries.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     
+    # 1. Clear proposal references to interactions (set to NULL)
+    await db.execute(
+        text("UPDATE proposals SET interaction_id = NULL WHERE contact_id = :contact_id"),
+        {"contact_id": contact_id}
+    )
+    
+    # 2. Clear proposal references to contact
+    await db.execute(
+        text("UPDATE proposals SET contact_id = NULL WHERE contact_id = :contact_id"),
+        {"contact_id": contact_id}
+    )
+    
+    # 3. Delete related tasks
+    await db.execute(
+        text("DELETE FROM tasks WHERE contact_id = :contact_id"),
+        {"contact_id": contact_id}
+    )
+    
+    # 4. Delete related artifacts
+    await db.execute(
+        text("DELETE FROM artifacts WHERE contact_id = :contact_id"),
+        {"contact_id": contact_id}
+    )
+    
+    # 5. Delete related interactions
+    await db.execute(
+        text("DELETE FROM interactions WHERE contact_id = :contact_id"),
+        {"contact_id": contact_id}
+    )
+    
+    # 6. Now delete the contact
     await db.delete(contact)
+    await db.flush()
+    
+    return {"success": True}
+
+@router.post("/contacts/{contact_id}/set-reminder")
+async def set_contact_reminder(
+    contact_id: str,
+    frequency: str = Query(..., regex="^(weekly|every_3_days|every_2_weeks|monthly|none)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set stay-in-touch reminder frequency for a contact."""
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    if frequency == "none":
+        contact.reminder_frequency = None
+        contact.next_reminder_at = None
+    else:
+        contact.reminder_frequency = frequency
+        contact.next_reminder_at = contact_queries.calculate_next_reminder(frequency)
+    
+    await db.flush()
+    
+    return {
+        "success": True,
+        "contact_id": contact_id,
+        "reminder_frequency": contact.reminder_frequency,
+        "next_reminder_at": contact.next_reminder_at.isoformat() if contact.next_reminder_at else None,
+    }
+
+@router.post("/contacts/{contact_id}/mark-contacted")
+async def mark_contact_contacted(
+    contact_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a contact as contacted and reset their reminder."""
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    contact.last_contacted_at = datetime.utcnow()
+    
+    if contact.reminder_frequency:
+        contact.next_reminder_at = contact_queries.calculate_next_reminder(
+            contact.reminder_frequency, 
+            contact.last_contacted_at
+        )
+    
+    await db.flush()
+    
     return {"success": True}
 
 
