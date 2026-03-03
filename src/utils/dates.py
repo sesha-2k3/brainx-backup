@@ -11,7 +11,7 @@ from dateutil.relativedelta import relativedelta
 def parse_relative_date(date_str: Optional[str]) -> Optional[datetime]:
     """
     Parse a relative or absolute date string.
-    Handles: "tomorrow", "next week", "in 3 days", "2024-01-15", etc.
+    Handles: "tomorrow", "next week", "in 3 days", "two weeks later", "2024-01-15", etc.
     """
     if not date_str:
         return None
@@ -20,6 +20,13 @@ def parse_relative_date(date_str: Optional[str]) -> Optional[datetime]:
     now = datetime.utcnow()
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
+    # Word to number mapping
+    word_numbers = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "a": 1, "an": 1
+    }
+    
     # Relative terms
     if date_str == "today":
         return today
@@ -27,31 +34,37 @@ def parse_relative_date(date_str: Optional[str]) -> Optional[datetime]:
     if date_str == "tomorrow":
         return today + timedelta(days=1)
     
-    if date_str == "next week":
+    if date_str in ("next week", "a week", "one week"):
         return today + timedelta(weeks=1)
     
-    if date_str == "next month":
+    if date_str in ("next month", "a month", "one month"):
         return today + relativedelta(months=1)
     
-    # "in X days/weeks"
-    match = re.match(r'in\s+(\d+)\s+(day|days|week|weeks)', date_str)
-    if match:
-        num = int(match.group(1))
-        unit = match.group(2)
-        if "week" in unit:
-            return today + timedelta(weeks=num)
-        else:
-            return today + timedelta(days=num)
+    # "in X days/weeks" or "X days/weeks later/from now"
+    patterns = [
+        r'in\s+(\w+)\s+(day|days|week|weeks)',
+        r'(\w+)\s+(day|days|week|weeks)\s+(later|from now)',
+        r'(\w+)\s+(day|days|week|weeks)',
+    ]
     
-    # "X days from now"
-    match = re.match(r'(\d+)\s+(day|days|week|weeks)\s+(from now|later)', date_str)
-    if match:
-        num = int(match.group(1))
-        unit = match.group(2)
-        if "week" in unit:
-            return today + timedelta(weeks=num)
-        else:
-            return today + timedelta(days=num)
+    for pattern in patterns:
+        match = re.match(pattern, date_str)
+        if match:
+            num_str = match.group(1)
+            unit = match.group(2)
+            
+            # Convert word to number
+            if num_str in word_numbers:
+                num = word_numbers[num_str]
+            elif num_str.isdigit():
+                num = int(num_str)
+            else:
+                continue
+            
+            if "week" in unit:
+                return today + timedelta(weeks=num)
+            else:
+                return today + timedelta(days=num)
     
     # Day names
     days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -59,7 +72,7 @@ def parse_relative_date(date_str: Optional[str]) -> Optional[datetime]:
         if day in date_str:
             current_day = today.weekday()
             days_ahead = i - current_day
-            if days_ahead <= 0:  # Target day already happened this week
+            if days_ahead <= 0:
                 days_ahead += 7
             if "next" in date_str:
                 days_ahead += 7
