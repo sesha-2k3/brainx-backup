@@ -1,4 +1,4 @@
-# API: Web interface endpoints (replaces OpenClaw webhooks)
+# API: Web interface endpoints
 
 import logging
 import os
