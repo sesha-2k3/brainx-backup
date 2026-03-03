@@ -14,7 +14,7 @@ Web-based personal relationship manager with AI-powered contact extraction.
 ### 2. Setup
 
 ```bash
-cd personal-crm
+cd brainx
 
 # Python setup
 python -m venv venv
@@ -36,9 +36,6 @@ cd ..
 ```bash
 # Start Postgres with Docker
 docker compose -f docker/docker-compose.yml up -d
-
-# Run migrations
-alembic upgrade head
 ```
 
 ### 4. Run (Development)
