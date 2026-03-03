@@ -70,6 +70,11 @@ class Contact(Base):
     # Notes and context
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # How we met, etc.
+
+    # Stay in touch reminder
+    reminder_frequency: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # weekly, every_3_days, every_2_weeks, monthly
+    last_contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_reminder_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     # Full-text search
     search_vector: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
