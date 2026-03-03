@@ -86,6 +86,23 @@ export async function deleteContact(id) {
   })
 }
 
+// Contact reminders
+export async function setContactReminder(contactId, frequency) {
+  return request(`/contacts/${contactId}/set-reminder?frequency=${frequency}`, {
+    method: 'POST',
+  })
+}
+
+export async function getDueReminders() {
+  return request('/contacts/due-reminders')
+}
+
+export async function markContacted(contactId) {
+  return request(`/contacts/${contactId}/mark-contacted`, {
+    method: 'POST',
+  })
+}
+
 // Tasks
 export async function listTasks(params = {}) {
   const query = new URLSearchParams(params).toString()

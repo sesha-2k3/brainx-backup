@@ -14,7 +14,7 @@ function App() {
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-5xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
-            <span className="font-semibold text-lg text-gray-800">Personal CRM</span>
+            <span className="font-semibold text-lg text-gray-800">BrainX</span>
             <div className="flex space-x-6">
               <NavLink 
                 to="/" 
