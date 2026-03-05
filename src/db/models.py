@@ -35,20 +35,6 @@ class TaskStatus(str, enum.Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
-
-class JobStatus(str, enum.Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class JobType(str, enum.Enum):
-    PROCESS_INBOUND = "process_inbound"
-    SEND_MESSAGE = "send_message"
-    DAILY_DIGEST = "daily_digest"
-
-
 # Models
 class Contact(Base):
     __tablename__ = "contacts"
@@ -189,57 +175,4 @@ class Task(Base):
         Index("idx_tasks_due", "due_date"),
         Index("idx_tasks_reminder", "reminder_at", "reminder_sent"),
     )
-
-
-class Artifact(Base):
-    __tablename__ = "artifacts"
-
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
     
-    # Reference
-    proposal_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("proposals.id"), nullable=True)
-    contact_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("contacts.id"), nullable=True)
-    
-    # File info
-    artifact_type: Mapped[str] = mapped_column(String(50), nullable=False)  # voice_note, image, business_card
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    original_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        Index("idx_artifacts_proposal", "proposal_id"),
-        Index("idx_artifacts_contact", "contact_id"),
-    )
-
-
-class Job(Base):
-    __tablename__ = "jobs"
-
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    
-    # Job definition
-    job_type: Mapped[JobType] = mapped_column(Enum(JobType), nullable=False)
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    
-    # Status tracking
-    status: Mapped[JobStatus] = mapped_column(Enum(JobStatus), default=JobStatus.PENDING)
-    attempts: Mapped[int] = mapped_column(Integer, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
-    # Scheduling
-    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    
-    # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        Index("idx_jobs_pending", "scheduled_for", postgresql_where=(status == JobStatus.PENDING)),
-    )
