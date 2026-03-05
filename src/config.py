@@ -10,12 +10,6 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # OpenClaw
-    openclaw_api_url: str
-    openclaw_webhook_token: str
-    openclaw_outbound_token: str
-    openclaw_phone_number_id: str
-
     # Groq
     groq_api_key: str
     groq_whisper_model: str = "whisper-large-v3"
@@ -25,17 +19,6 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     tenant_id: str = "default"
-
-    # Digest
-    digest_hour: int = 8
-    digest_timezone: str = "America/New_York"
-
-    # Storage
-    artifacts_path: str = "/var/data/personal-crm/artifacts"
-
-    # Worker
-    worker_poll_interval: int = 2
-    worker_max_retries: int = 3
 
     @property
     def is_development(self) -> bool:
