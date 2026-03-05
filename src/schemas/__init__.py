@@ -1,10 +1,4 @@
 # Pydantic schemas package
-from src.schemas.webhooks import (
-    InboundMessage,
-    InboundWebhookPayload,
-    ActionPayload,
-    WebhookResponse,
-)
 from src.schemas.contacts import (
     ContactCreate,
     ContactUpdate,
@@ -22,20 +16,8 @@ from src.schemas.tasks import (
     TaskUpdate,
     TaskResponse,
     TaskSummary,
-)
-from src.schemas.messages import (
-    TextMessage,
-    InteractiveMessage,
-    Button,
-    ListMessage,
-    MessageResponse,
-)
-
+)   
 __all__ = [
-    "InboundMessage",
-    "InboundWebhookPayload",
-    "ActionPayload",
-    "WebhookResponse",
     "ContactCreate",
     "ContactUpdate",
     "ContactResponse",
