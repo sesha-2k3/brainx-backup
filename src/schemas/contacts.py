@@ -59,7 +59,7 @@ class ContactSummary(BaseModel):
 
 
 class ExtractedContactData(BaseModel):
-    """Contact data extracted by LLM from voice/text."""
+    """Structured data extracted from voice/text input."""
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -68,5 +68,13 @@ class ExtractedContactData(BaseModel):
     category: Optional[str] = None
     context: Optional[str] = None
     interaction_summary: Optional[str] = None
+    tasks: list[ExtractedTask] = []
+    
+    # Legacy fields for backward compatibility
     follow_up: Optional[str] = None
     follow_up_date: Optional[str] = None
+
+class ExtractedTask(BaseModel):
+    """A single extracted task."""
+    title: str
+    due_date: Optional[str] = None
