@@ -39,6 +39,8 @@ def parse_relative_date(date_str: Optional[str]) -> Optional[datetime]:
     
     if date_str in ("next month", "a month", "one month"):
         return today + relativedelta(months=1)
+    if date_str in ("this month", "this_month"):
+        return today.replace(day=1)
     
     # "in X days/weeks" or "X days/weeks later/from now"
     patterns = [
