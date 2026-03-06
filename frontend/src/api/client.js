@@ -132,3 +132,37 @@ export async function deleteTask(id) {
 export async function search(query) {
   return request(`/search?q=${encodeURIComponent(query)}`)
 }
+
+// Search contacts (semantic)
+export async function searchContacts(query) {
+  return request(`/search?q=${encodeURIComponent(query)}`)
+}
+
+// update task function
+export async function updateTask(taskId, taskData) {
+  return request(`/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(taskData),
+  })
+}
+
+// Interaction Handling (CRUD)
+export async function createInteraction(data) {
+  return request('/interactions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function updateInteraction(interactionId, data) {
+  return request(`/interactions/${interactionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteInteraction(interactionId) {
+  return request(`/interactions/${interactionId}`, {
+    method: 'DELETE',
+  })
+}

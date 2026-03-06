@@ -2,30 +2,42 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { search } from '../api/client'
+import { searchContacts } from '../api/client'
 
 function SearchPage() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState(null)
+  const [results, setResults] = useState({ 
+    contacts: [], 
+    tasks: [], 
+    interactions: [],
+    explanation: '',
+  })
   const [loading, setLoading] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
   const [error, setError] = useState(null)
 
   const handleSearch = async (e) => {
-    e.preventDefault()
-    if (!query.trim()) return
-    
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const result = await search(query)
-      setResults(result)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+  e.preventDefault()
+  if (!query.trim()) return
+  
+  setLoading(true)
+  setError(null)
+  setHasSearched(true) // for removing the initial empty state display.
+  
+  try {
+    const result = await searchContacts(query)
+    setResults({
+      contacts: result.contacts || [],
+      tasks: result.tasks || [],
+      interactions: result.interactions || [],
+      explanation: result.explanation || '',
+    })
+  } catch (err) {
+    setError(err.message)
+  } finally {
+    setLoading(false)
   }
+}
 
   const exampleQueries = [
     'Who is Eddie?',
@@ -79,6 +91,13 @@ function SearchPage() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           {error}
+        </div>
+      )}
+
+      {/* Add this after the search box, before results */}
+      {results.explanation && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-4">
+          <p className="text-sm">{results.explanation}</p>
         </div>
       )}
 
@@ -155,8 +174,8 @@ function SearchPage() {
             </div>
           )}
 
-          {/* No results */}
-          {!results.contacts?.length && !results.interactions?.length && !results.tasks?.length && (
+          {/* Only show "No results" after a search has been performed */}
+          {hasSearched && !loading && results.contacts.length === 0 && results.tasks.length === 0 && (
             <div className="text-center py-12 text-gray-500">
               No results found for "{query}"
             </div>
