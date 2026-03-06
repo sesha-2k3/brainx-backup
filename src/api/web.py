@@ -6,13 +6,15 @@ import tempfile
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, Body
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy import select, func
 
 from src.config import get_settings
 from src.db import get_db
+from src.db.models import Contact, Task, TaskStatus
 from src.db.queries import contacts as contact_queries
 from src.db.queries import interactions as interaction_queries
 from src.db.queries import proposals as proposal_queries
@@ -48,6 +50,16 @@ class ConfirmInput(BaseModel):
     follow_up: Optional[str] = None
     follow_up_date: Optional[str] = None
 
+class ProposalConfirmData(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None
+    context: Optional[str] = None
+    interaction_summary: Optional[str] = None
+    tasks: list[dict] = []  # Array of {title, due_date}
 
 class ContactUpdate(BaseModel):
     name: Optional[str] = None
@@ -67,22 +79,44 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime] = None
 
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    contact_id: Optional[str] = None
 
-# Input processing endpoints
+class InteractionCreate(BaseModel):
+    contact_id: str
+    interaction_type: str = "note"
+    summary: str
+    occurred_at: Optional[str] = None
+
+class InteractionUpdate(BaseModel):
+    interaction_type: Optional[str] = None
+    summary: Optional[str] = None
+    occurred_at: Optional[str] = None
+
+class ContactCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None
+    context: Optional[str] = None
+    notes: Optional[str] = None
+
 @router.post("/input/text")
 async def process_text_input(
-    data: TextInput,
+    text: str = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
 ):
-    """Process text input and extract contact data."""
-    if not data.text.strip():
-        raise HTTPException(status_code=400, detail="Text is required")
+    """Process text input and extract contact information."""
+    # Extract contact data
+    extracted = await extract_contact_data(text)
     
-    # Extract contact data using LLM
-    extracted = await extract_contact_data(data.text)
-    
-    if not extracted.name:
-        raise HTTPException(status_code=400, detail="Could not extract contact name from text")
+    if not extracted or not extracted.name:
+        raise HTTPException(status_code=400, detail="Could not extract contact information")
     
     # Check for duplicate
     duplicate = await find_duplicate(db, extracted, settings.tenant_id)
@@ -96,9 +130,28 @@ async def process_text_input(
         tenant_id=settings.tenant_id,
     )
     
+    # Convert tasks to list of dicts
+    tasks = []
+    if extracted.tasks:
+        tasks = [{"title": t.title, "due_date": t.due_date} for t in extracted.tasks]
+    # Backward compatibility: if no tasks array but has follow_up
+    elif extracted.follow_up:
+        tasks = [{"title": extracted.follow_up, "due_date": extracted.follow_up_date}]
+    
     return {
-        "id": proposal.id,
-        "extracted_data": extracted.model_dump(),
+        "proposal_id": proposal.id,
+        "extracted": {
+            "name": extracted.name,
+            "email": extracted.email,
+            "phone": extracted.phone,
+            "company": extracted.company,
+            "role": extracted.role,
+            "category": extracted.category,
+            "context": extracted.context,
+            "interaction_summary": extracted.interaction_summary,
+            "tasks": tasks,
+        },
+        "is_duplicate": duplicate is not None,
         "duplicate_contact": {
             "id": duplicate.id,
             "name": duplicate.name,
@@ -184,43 +237,35 @@ async def get_proposal(
 @router.post("/proposals/{proposal_id}/confirm")
 async def confirm_proposal(
     proposal_id: str,
-    data: ConfirmInput,
+    data: ProposalConfirmData,
     db: AsyncSession = Depends(get_db),
 ):
-    """Confirm a proposal and create/update contact."""
+    """Confirm a proposal and create/update the contact."""
+    from src.utils.dates import parse_relative_date
+    
     proposal = await proposal_queries.get_proposal_by_id(db, proposal_id)
     if not proposal:
         raise HTTPException(status_code=404, detail="Proposal not found")
     
-    extracted = ExtractedContactData(**data.model_dump())
-    
-    # Check for duplicate
+    # Create or update contact
+    extracted = ExtractedContactData(**proposal.extracted_data)
     duplicate = await find_duplicate(db, extracted, settings.tenant_id)
     
     if duplicate:
-        # Update existing contact
-        updates = {}
-        if data.email and not duplicate.email:
-            updates["email"] = data.email
-        if data.phone and not duplicate.phone:
-            updates["phone"] = data.phone
-        if data.company and not duplicate.company:
-            updates["company"] = data.company
-        if data.role and not duplicate.role:
-            updates["role"] = data.role
-        if data.category and not duplicate.category:
-            updates["category"] = data.category
-        if data.context:
-            existing = duplicate.context or ""
-            if data.context not in existing:
-                updates["context"] = f"{existing}\n{data.context}".strip()
-        
-        if updates:
-            await contact_queries.update_contact(db, duplicate.id, **updates)
-        
         contact = duplicate
+        # Update with new info
+        updates = {}
+        if data.email and not contact.email:
+            updates["email"] = data.email
+        if data.phone and not contact.phone:
+            updates["phone"] = data.phone
+        if data.company and not contact.company:
+            updates["company"] = data.company
+        if data.role and not contact.role:
+            updates["role"] = data.role
+        if updates:
+            await contact_queries.update_contact(db, contact.id, **updates)
     else:
-        # Create new contact
         contact = await contact_queries.create_contact(
             db,
             name=data.name,
@@ -233,7 +278,7 @@ async def confirm_proposal(
             tenant_id=settings.tenant_id,
         )
     
-    # Create interaction if summary provided
+    # Create interaction
     interaction = None
     if data.interaction_summary:
         interaction = await interaction_queries.create_interaction(
@@ -245,37 +290,37 @@ async def confirm_proposal(
             tenant_id=settings.tenant_id,
         )
     
-    # Create task if follow-up provided
-    if data.follow_up:
-        due_date = None
-        if data.follow_up_date:
-            due_date = parse_relative_date(data.follow_up_date)
-        
-        await task_queries.create_task(
-            db,
-            title=data.follow_up,
-            contact_id=contact.id,
-            due_date=due_date,
-            tenant_id=settings.tenant_id,
-        )
+    # Create ALL tasks
+    created_tasks = []
+    for task_data in data.tasks:
+        if task_data.get("title"):
+            due_date = None
+            if task_data.get("due_date"):
+                due_date = parse_relative_date(task_data["due_date"])
+            
+            task = await task_queries.create_task(
+                db,
+                title=task_data["title"],
+                contact_id=contact.id,
+                due_date=due_date,
+                tenant_id=settings.tenant_id,
+            )
+            created_tasks.append(task)
     
-    # Mark proposal confirmed
+    # Mark proposal as confirmed
     await proposal_queries.confirm_proposal(
         db,
-        proposal.id,
+        proposal_id,
         contact_id=contact.id,
         interaction_id=interaction.id if interaction else None,
     )
     
     return {
         "success": True,
-        "contact": {
-            "id": contact.id,
-            "name": contact.name,
-            "company": contact.company,
-        },
+        "contact_id": contact.id,
+        "contact_name": contact.name,
+        "tasks_created": len(created_tasks),
     }
-
 
 @router.delete("/proposals/{proposal_id}")
 async def reject_proposal(
@@ -575,6 +620,39 @@ async def create_task(
         }
     }
 
+@router.patch("/tasks/{task_id}")
+async def update_task(
+    task_id: str,
+    task_data: TaskUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a task."""
+    from src.utils.dates import parse_relative_date
+    
+    task = await task_queries.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    updates = {}
+    if task_data.title is not None:
+        updates["title"] = task_data.title
+    if task_data.description is not None:
+        updates["description"] = task_data.description
+    if task_data.due_date is not None:
+        if task_data.due_date == "":
+            updates["due_date"] = None
+        else:
+            updates["due_date"] = parse_relative_date(task_data.due_date)
+    if task_data.contact_id is not None:
+        if task_data.contact_id == "":
+            updates["contact_id"] = None
+        else:
+            updates["contact_id"] = task_data.contact_id
+    
+    if updates:
+        await task_queries.update_task(db, task_id, **updates)
+    
+    return {"success": True}
 
 @router.post("/tasks/{task_id}/complete")
 async def complete_task(
@@ -609,94 +687,151 @@ async def search(
     q: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
 ):
-    """Natural language search across contacts, interactions, and tasks."""
-    # Parse the query using LLM
-    parsed = await parse_query(q)
-    intent = parsed.get("intent", "fts_search")
-    filters = parsed.get("filters", {})
+    """Semantic search across contacts using LLM."""
+    from src.services.semantic_search import semantic_search_with_explanation
+    from sqlalchemy.orm import selectinload
     
-    contacts = []
-    interactions = []
-    tasks = []
+    # Get all contacts WITH their interactions
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.interactions))
+        .where(Contact.tenant_id == settings.tenant_id)
+        .order_by(Contact.created_at.desc())
+        .limit(100)
+    )
+    all_contacts = list(result.scalars().all())
     
-    if intent == "contact_lookup":
-        name = filters.get("name", q)
-        contacts = await contact_queries.search_contacts_by_name(
-            db, name, settings.tenant_id
-        )
+    # Convert to dicts for LLM - include interactions!
+    contacts_data = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "company": c.company,
+            "role": c.role,
+            "category": c.category,
+            "notes": c.notes,
+            "context": c.context,
+            "interactions": "; ".join([i.summary for i in c.interactions]) if c.interactions else None,
+        }
+        for c in all_contacts
+    ]
     
-    elif intent == "filtered_list":
-        category = filters.get("category")
-        since = None
-        if "date_range" in filters and "start" in filters["date_range"]:
-            try:
-                since = datetime.fromisoformat(filters["date_range"]["start"])
-            except:
-                pass
-        
-        contacts = await search_queries.get_contacts_by_category(
-            db, category, settings.tenant_id, since
-        )
+    # Semantic search using LLM
+    search_result = await semantic_search_with_explanation(q, contacts_data)
     
-    elif intent == "task_query":
-        due_by = filters.get("due_by")
-        if due_by:
-            try:
-                due_date = datetime.fromisoformat(due_by)
-                tasks = await task_queries.list_tasks_due_by(db, due_date, settings.tenant_id)
-            except:
-                tasks = await task_queries.list_pending_tasks(db, settings.tenant_id)
-        else:
-            tasks = await task_queries.list_pending_tasks(db, settings.tenant_id)
+    # Handle both dict and list returns
+    if isinstance(search_result, dict):
+        matches = search_result.get("matches", [])
+        explanation = search_result.get("explanation", "")
+    else:
+        matches = search_result if search_result else []
+        explanation = ""
     
-    elif intent == "interaction_search":
-        company = filters.get("company")
-        if company:
-            interactions = await search_queries.get_interactions_by_company(
-                db, company, settings.tenant_id
-            )
-        else:
-            query_text = filters.get("query_text", q)
-            interactions = await interaction_queries.search_interactions(
-                db, query_text, settings.tenant_id
-            )
-    
-    else:  # fts_search
-        results = await search_queries.search_all(db, q, settings.tenant_id)
-        contacts = results["contacts"]
-        interactions = results["interactions"]
-    
-    # Format response
     return {
         "query": q,
-        "intent": intent,
-        "contacts": [
-            {
-                "id": c.id,
-                "name": c.name,
-                "company": c.company,
-                "role": c.role,
-                "category": c.category,
-            }
-            for c in contacts
-        ],
-        "interactions": [
-            {
-                "id": i.id,
-                "contact_id": i.contact_id,
-                "contact_name": (await contact_queries.get_contact_by_id(db, i.contact_id)).name if i.contact_id else None,
-                "summary": i.summary,
-                "occurred_at": i.occurred_at.isoformat(),
-            }
-            for i in interactions
-        ],
-        "tasks": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "due_date": t.due_date.isoformat() if t.due_date else None,
-                "contact_name": (await contact_queries.get_contact_by_id(db, t.contact_id)).name if t.contact_id else None,
-            }
-            for t in tasks
-        ],
+        "intent": "semantic_search",
+        "explanation": explanation,
+        "contacts": matches,
+        "interactions": [],
+        "tasks": [],
+    }
+
+@router.patch("/interactions/{interaction_id}")
+async def update_interaction(
+    interaction_id: str,
+    data: InteractionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an interaction."""
+    interaction = await interaction_queries.get_interaction_by_id(db, interaction_id)
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Interaction not found")
+    
+    updates = {}
+    if data.interaction_type is not None:
+        updates["interaction_type"] = data.interaction_type
+    if data.summary is not None:
+        updates["summary"] = data.summary
+    if data.occurred_at is not None:
+        updates["occurred_at"] = datetime.fromisoformat(data.occurred_at)
+    
+    if updates:
+        await interaction_queries.update_interaction(db, interaction_id, **updates)
+    
+    return {"success": True}
+
+
+@router.delete("/interactions/{interaction_id}")
+async def delete_interaction(
+    interaction_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an interaction."""
+    interaction = await interaction_queries.get_interaction_by_id(db, interaction_id)
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Interaction not found")
+    
+    await interaction_queries.delete_interaction(db, interaction_id)
+    return {"success": True}
+
+
+@router.post("/interactions")
+async def create_interaction(
+    data: InteractionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new interaction."""
+    # Verify contact exists
+    contact = await contact_queries.get_contact_by_id(db, data.contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    occurred_at = datetime.utcnow()
+    if data.occurred_at:
+        occurred_at = datetime.fromisoformat(data.occurred_at)
+    
+    interaction = await interaction_queries.create_interaction(
+        db,
+        contact_id=data.contact_id,
+        interaction_type=data.interaction_type,
+        summary=data.summary,
+        occurred_at=occurred_at,
+        tenant_id=settings.tenant_id,
+    )
+    
+    return {
+        "success": True,
+        "interaction": {
+            "id": interaction.id,
+            "interaction_type": interaction.interaction_type,
+            "summary": interaction.summary,
+            "occurred_at": interaction.occurred_at.isoformat(),
+        }
+    }
+
+@router.post("/contacts")
+async def create_contact_direct(
+    data: ContactCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a contact directly (without extraction)."""
+    contact = await contact_queries.create_contact(
+        db,
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        company=data.company,
+        role=data.role,
+        category=data.category,
+        context=data.context,
+        notes=data.notes,
+        tenant_id=settings.tenant_id,
+    )
+    
+    return {
+        "success": True,
+        "contact": {
+            "id": contact.id,
+            "name": contact.name,
+        }
     }
