@@ -14,27 +14,40 @@ settings = get_settings()
 
 client = AsyncGroq(api_key=settings.groq_api_key)
 
-EXTRACTION_PROMPT = """You are extracting contact and interaction information from a voice note or text message.
+EXTRACTION_PROMPT = """Extract contact information and ALL tasks/follow-ups from this text.
 
-Extract the following fields if present. Return ONLY a JSON object with these keys:
-- name: Person's full name
-- email: Email address
-- phone: Phone number
-- company: Company or organization name
-- role: Job title or role
-- category: One of: investor, client, partner, friend, family, colleague, other
-- context: How/where they met or relationship context
-- interaction_summary: Brief summary of what was discussed or noted
-- follow_up: Any follow-up action mentioned
-- follow_up_date: Follow-up date if mentioned (ISO format YYYY-MM-DD or relative like "next week")
-
-If a field is not mentioned or unclear, set it to null.
-Be concise in summaries. Extract exact values for name, email, phone.
-
-TEXT TO EXTRACT FROM:
+TEXT:
 {text}
 
-Respond with ONLY the JSON object, no markdown or explanation."""
+Return a JSON object with these fields:
+- name: Full name of the person
+- email: Email address (or null)
+- phone: Phone number (or null)
+- company: Company/organization name (or null)
+- role: Job title/role (or null)
+- category: One of: investor, client, partner, friend, family, colleague, other (or null)
+- context: How/where you met this person (or null)
+- interaction_summary: Brief summary of the conversation/interaction (or null)
+- tasks: Array of tasks/follow-ups extracted. Each task has:
+  - title: What needs to be done
+  - due_date: When (use relative terms like "tomorrow", "next week", "in 3 days", or null)
+
+Example output:
+{{
+  "name": "John Smith",
+  "email": "john@acme.com",
+  "company": "Acme Corp",
+  "role": "VP Sales",
+  "category": "client",
+  "context": "Met at tech conference",
+  "interaction_summary": "Discussed partnership opportunity",
+  "tasks": [
+    {{"title": "Send proposal to John", "due_date": "next week"}},
+    {{"title": "Schedule follow-up call", "due_date": "in 3 days"}}
+  ]
+}}
+
+JSON only, no explanation:"""
 
 
 async def extract_contact_data(text: str) -> ExtractedContactData:
