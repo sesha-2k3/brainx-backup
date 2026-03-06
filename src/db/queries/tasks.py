@@ -134,3 +134,20 @@ async def list_tasks_for_contact(
     query = query.order_by(Task.due_date.asc().nullslast()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
+
+async def update_task(
+    db: AsyncSession,
+    task_id: str,
+    **kwargs,
+) -> Optional[Task]:
+    """Update a task with given fields."""
+    task = await db.get(Task, task_id)
+    if not task:
+        return None
+    
+    for key, value in kwargs.items():
+        if hasattr(task, key):
+            setattr(task, key, value)
+    
+    await db.flush()
+    return task
