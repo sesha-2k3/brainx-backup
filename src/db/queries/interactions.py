@@ -96,3 +96,42 @@ def _build_search_vector(interaction: Interaction) -> str:
         interaction.raw_transcript or "",
     ]
     return " ".join(filter(None, parts)).lower()
+
+async def get_interaction_by_id(
+    db: AsyncSession,
+    interaction_id: str,
+) -> Optional[Interaction]:
+    """Get an interaction by ID."""
+    return await db.get(Interaction, interaction_id)
+
+
+async def update_interaction(
+    db: AsyncSession,
+    interaction_id: str,
+    **kwargs,
+) -> Optional[Interaction]:
+    """Update an interaction."""
+    interaction = await db.get(Interaction, interaction_id)
+    if not interaction:
+        return None
+    
+    for key, value in kwargs.items():
+        if hasattr(interaction, key):
+            setattr(interaction, key, value)
+    
+    await db.flush()
+    return interaction
+
+
+async def delete_interaction(
+    db: AsyncSession,
+    interaction_id: str,
+) -> bool:
+    """Delete an interaction."""
+    interaction = await db.get(Interaction, interaction_id)
+    if not interaction:
+        return False
+    
+    await db.delete(interaction)
+    await db.flush()
+    return True
