@@ -65,15 +65,6 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000
 
 Open http://localhost:8000
 
-## Configuration
-
-Key environment variables in `.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Postgres connection string |
-| `GROQ_API_KEY` | Groq API key for transcription and LLM |
-
 ## Features
 
 - **Text input**: Paste meeting notes, extract contacts automatically
