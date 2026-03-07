@@ -59,7 +59,7 @@ cd frontend
 npm run build
 cd ..
 
-# Start server (serves both API and frontend)
+# Start server
 uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
