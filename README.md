@@ -1,4 +1,4 @@
-# Personal CRM
+# BrainX
 
 Web-based personal relationship manager with AI-powered contact extraction.
 
