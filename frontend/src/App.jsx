@@ -9,10 +9,9 @@ import SearchPage from './pages/SearchPage'
 
 function App() {
   const navLinkClass = ({ isActive }) =>
-    `px-3 py-2 rounded-md text-sm font-medium ${
-      isActive
-        ? 'text-blue-600'
-        : 'text-gray-600 hover:text-gray-900'
+    `px-3 py-2 rounded-md text-sm font-medium ${isActive
+      ? 'text-blue-600'
+      : 'text-gray-600 hover:text-gray-900'
     }`
 
   return (
