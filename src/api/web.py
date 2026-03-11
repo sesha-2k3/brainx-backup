@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from src.config import get_settings
 from src.db import get_db
@@ -556,6 +557,22 @@ async def mark_contact_contacted(
     
     return {"success": True}
 
+async def list_pending_tasks_with_contacts(
+    db: AsyncSession,
+    tenant_id: str = "default",
+    limit: int = 50,
+) -> list[Task]:
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.contact))  # Eager load contacts
+        .where(
+            Task.tenant_id == tenant_id,
+            Task.status == TaskStatus.PENDING,
+        )
+        .order_by(Task.due_date.asc().nullslast())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 # Task endpoints
 @router.get("/tasks")
@@ -577,12 +594,6 @@ async def list_tasks(
     # Get contact names
     result = []
     for task in tasks:
-        contact_name = None
-        if task.contact_id:
-            contact = await contact_queries.get_contact_by_id(db, task.contact_id)
-            if contact:
-                contact_name = contact.name
-        
         result.append({
             "id": task.id,
             "title": task.title,
@@ -590,7 +601,7 @@ async def list_tasks(
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "status": task.status,
             "contact_id": task.contact_id,
-            "contact_name": contact_name,
+            "contact_name": task.contact.name if task.contact else None,
         })
     
     return {"tasks": result}
