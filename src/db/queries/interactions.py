@@ -34,12 +34,6 @@ async def create_interaction(
     await db.flush()
     return interaction
 
-
-async def get_interaction_by_id(db: AsyncSession, interaction_id: str) -> Optional[Interaction]:
-    result = await db.execute(select(Interaction).where(Interaction.id == interaction_id))
-    return result.scalar_one_or_none()
-
-
 async def list_interactions_for_contact(
     db: AsyncSession,
     contact_id: str,
