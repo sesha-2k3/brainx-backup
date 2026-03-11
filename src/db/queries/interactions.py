@@ -16,7 +16,7 @@ async def create_interaction(
     summary: str,
     occurred_at: datetime,
     raw_transcript: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    extra_data: Optional[dict] = None,
     tenant_id: str = "default",
 ) -> Interaction:
     interaction = Interaction(
@@ -26,7 +26,7 @@ async def create_interaction(
         summary=summary,
         occurred_at=occurred_at,
         raw_transcript=raw_transcript,
-        metadata=metadata,
+        extra_data=extra_data,
     )
     # Build search vector
     interaction.search_vector = _build_search_vector(interaction)
