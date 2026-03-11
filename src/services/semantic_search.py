@@ -1,25 +1,45 @@
-"""
-Semantic Search to find the contacts (Search bot, will use embeddings once scaled)
-"""
+# services/semantic_search.py
+"""Semantic search using LLM to find relevant contacts."""
+
 import json
 import logging
-import httpx
+from typing import Any
+
+from groq import AsyncGroq
+
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
-async def semantic_search_with_explanation(query: str, contacts: list[dict]) -> dict:
-    """
-    Semantic search that returns only highly relevant matches.
-    """
-    if not contacts:
-        return {"matches": [], "explanation": "No contacts in database."}
+# Constants
+MAX_NOTES_LENGTH = 200
+MAX_CONTEXT_LENGTH = 200
+MAX_INTERACTIONS_LENGTH = 300
+MAX_CONTACTS_FOR_SEARCH = 50
+
+
+def _parse_llm_json(content: str) -> Any:
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    content = content.strip()
     
-    # Build context from contacts
+    if content.startswith("```"):
+        lines = content.split("\n")
+        # Remove first line (```json) and last line (```)
+        if lines[-1].strip() == "```":
+            content = "\n".join(lines[1:-1])
+        else:
+            content = "\n".join(lines[1:])
+    
+    return json.loads(content)
+
+
+def _build_contact_context(contacts: list[dict]) -> str:
+    """Build formatted context string from contacts for LLM."""
     context_parts = []
-    for i, c in enumerate(contacts):
+    
+    for i, c in enumerate(contacts[:MAX_CONTACTS_FOR_SEARCH]):
         parts = [f"#{i+1} {c.get('name', 'Unknown')}"]
+        
         if c.get('company'):
             parts.append(f"({c['company']})")
         if c.get('role'):
@@ -27,16 +47,18 @@ async def semantic_search_with_explanation(query: str, contacts: list[dict]) -> 
         if c.get('category'):
             parts.append(f"<{c['category']}>")
         if c.get('notes'):
-            parts.append(f"Notes: {c['notes'][:200]}")
+            parts.append(f"Notes: {c['notes'][:MAX_NOTES_LENGTH]}")
         if c.get('context'):
-            parts.append(f"Context: {c['context'][:200]}")
+            parts.append(f"Context: {c['context'][:MAX_CONTEXT_LENGTH]}")
         if c.get('interactions'):
-            parts.append(f"Interactions: {c['interactions'][:300]}")
+            parts.append(f"Interactions: {c['interactions'][:MAX_INTERACTIONS_LENGTH]}")
+        
         context_parts.append(" | ".join(parts))
     
-    context = "\n".join(context_parts)
-    
-    prompt = f"""You are a precise CRM search assistant. Return ONLY contacts that DIRECTLY match the query.
+    return "\n".join(context_parts)
+
+
+SEARCH_PROMPT = """You are a precise CRM search assistant. Return ONLY contacts that DIRECTLY match the query.
 
 CONTACTS:
 {context}
@@ -59,52 +81,66 @@ Respond with JSON only:
 
 JSON:"""
 
+
+async def semantic_search_with_explanation(
+    query: str, 
+    contacts: list[dict]
+) -> dict:
+    """
+    Semantic search that returns only highly relevant matches.
+    
+    Args:
+        query: Natural language search query
+        contacts: List of contact dictionaries to search through
+        
+    Returns:
+        Dict with 'matches' (list of matching contacts) and 'explanation' (str)
+    """
+    if not contacts:
+        return {"matches": [], "explanation": "No contacts in database."}
+    
+    if not query.strip():
+        return {"matches": [], "explanation": "Empty search query."}
+    
+    context = _build_contact_context(contacts)
+    prompt = SEARCH_PROMPT.format(context=context, query=query)
+    
+    settings = get_settings()
+    client = AsyncGroq(api_key=settings.groq_api_key)
+    
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.groq_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.groq_llm_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0,
-                    "max_tokens": 300,
-                },
-                timeout=30.0,
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Groq API error: {response.status_code}")
-                return {"matches": [], "explanation": "Search service unavailable."}
-            
-            data = response.json()
-            content = data["choices"][0]["message"]["content"].strip()
-            
-            logger.info(f"Query: {query}")
-            logger.info(f"LLM response: {content}")
-            
-            # Clean up
-            if content.startswith("```"):
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1])
-            
-            result = json.loads(content)
-            
-            # Convert indices to actual contacts
-            matches = []
-            for idx in result.get("matches", []):
-                actual_idx = idx - 1
-                if 0 <= actual_idx < len(contacts):
-                    matches.append(contacts[actual_idx])
-            
-            return {
-                "matches": matches,
-                "explanation": result.get("explanation", ""),
-            }
-            
+        response = await client.chat.completions.create(
+            model=settings.groq_llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=300,
+        )
+        
+        content = response.choices[0].message.content.strip()
+        logger.info(f"Search query: {query}")
+        logger.debug(f"LLM response: {content}")
+        
+        # Parse JSON (handles both raw JSON and markdown-wrapped)
+        result = _parse_llm_json(content)
+        
+        # Convert 1-based indices to actual contacts
+        matches = []
+        for idx in result.get("matches", []):
+            actual_idx = idx - 1  # LLM uses 1-based indexing
+            if 0 <= actual_idx < len(contacts):
+                matches.append(contacts[actual_idx])
+            else:
+                logger.warning(f"Invalid contact index from LLM: {idx}")
+        
+        return {
+            "matches": matches,
+            "explanation": result.get("explanation", ""),
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        return {"matches": [], "explanation": "Failed to parse search results."}
+    
     except Exception as e:
-        logger.error(f"Semantic search error: {e}")
+        logger.error(f"Semantic search error: {e}", exc_info=True)
         return {"matches": [], "explanation": "Search failed."}
