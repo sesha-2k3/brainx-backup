@@ -2,22 +2,37 @@
 
 import logging
 import re
+import asyncio
+import io
 from pathlib import Path
-from typing import Optional
 
 import pytesseract
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor
 
 from src.schemas.contacts import ExtractedContactData
 from src.services.extraction import extract_contact_data
 
 logger = logging.getLogger(__name__)
 
+# Threadpool for blocking OCR operations.
+_executor = ThreadPoolExecutor(max_workers=4)
+
 # Common patterns for extraction
 EMAIL_PATTERN = re.compile(r'[\w\.-]+@[\w\.-]+\.\w+')
 PHONE_PATTERN = re.compile(r'[\+]?[(]?[0-9]{1,3}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}')
 URL_PATTERN = re.compile(r'https?://[^\s]+|www\.[^\s]+')
 
+def _run_ocr_sync(image_bytes: bytes) -> tuple[str, float]:
+    """Synchronous OCR processing (runs in thread pool)."""
+    image = Image.open(io.BytesIO(image_bytes))
+    raw_text = pytesseract.image_to_string(image)
+    
+    ocr_data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    confidences = [c for c in ocr_data['conf'] if c > 0]
+    avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+    
+    return raw_text, avg_confidence / 100
 
 async def process_business_card(file_path: str) -> dict:
     """
@@ -62,19 +77,17 @@ async def process_business_card(file_path: str) -> dict:
 
 
 async def process_business_card_bytes(image_bytes: bytes) -> dict:
-    """
-    Process business card from bytes.
-    """
-    import io
-    
+    """Process business card from bytes."""
     logger.info(f"Processing business card bytes: {len(image_bytes)} bytes")
     
-    image = Image.open(io.BytesIO(image_bytes))
-    raw_text = pytesseract.image_to_string(image)
+    loop = asyncio.get_event_loop()
     
-    ocr_data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-    confidences = [c for c in ocr_data['conf'] if c > 0]
-    avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+    # Run blocking OCR in thread pool
+    raw_text, confidence = await loop.run_in_executor(
+        _executor, 
+        _run_ocr_sync, 
+        image_bytes
+    )
     
     quick_extract = _quick_extract(raw_text)
     extracted = await extract_contact_data(raw_text)
@@ -86,7 +99,7 @@ async def process_business_card_bytes(image_bytes: bytes) -> dict:
     
     return {
         "raw_text": raw_text,
-        "confidence": avg_confidence / 100,
+        "confidence": confidence,
         "extracted": extracted,
     }
 
