@@ -57,6 +57,10 @@ class ContactSummary(BaseModel):
     class Config:
         from_attributes = True
 
+class ExtractedTask(BaseModel):
+    """A single extracted task."""
+    title: str
+    due_date: Optional[str] = None
 
 class ExtractedContactData(BaseModel):
     """Structured data extracted from voice/text input."""
@@ -73,8 +77,3 @@ class ExtractedContactData(BaseModel):
     # Legacy fields for backward compatibility
     follow_up: Optional[str] = None
     follow_up_date: Optional[str] = None
-
-class ExtractedTask(BaseModel):
-    """A single extracted task."""
-    title: str
-    due_date: Optional[str] = None
