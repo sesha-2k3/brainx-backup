@@ -23,6 +23,7 @@ __all__ = [
     "ContactResponse",
     "ContactSummary",
     "ExtractedContactData",
+    "ExtractedTask",
     "ProposalResponse",
     "ConfirmationCard",
     "EditRequest",
@@ -30,9 +31,4 @@ __all__ = [
     "TaskUpdate",
     "TaskResponse",
     "TaskSummary",
-    "TextMessage",
-    "InteractiveMessage",
-    "Button",
-    "ListMessage",
-    "MessageResponse",
 ]
