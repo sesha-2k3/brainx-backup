@@ -3,16 +3,13 @@
 import json
 import logging
 from typing import Optional
-
+from functools import lru_cache
 from groq import AsyncGroq
-
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-client = AsyncGroq(api_key=settings.groq_api_key)
 
 EXTRACTION_PROMPT = """Extract contact information and ALL tasks/follow-ups from this text.
 
@@ -49,6 +46,11 @@ Example output:
 
 JSON only, no explanation:"""
 
+@lru_cache()
+def get_groq_client() -> AsyncGroq:
+    """Lazy initialization of Groq client."""
+    settings = get_settings()
+    return AsyncGroq(api_key=settings.groq_api_key)
 
 async def extract_contact_data(text: str) -> ExtractedContactData:
     """
@@ -56,6 +58,7 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
     """
     logger.info(f"Extracting data from text: {len(text)} chars")
     
+    client = get_groq_client()
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
         messages=[
