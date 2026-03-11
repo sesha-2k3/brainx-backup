@@ -1,5 +1,4 @@
-# services/semantic_search.py
-"""Semantic search using LLM to find relevant contacts."""
+""" Semantic search using LLM to find relevant contacts. """
 
 import json
 import logging
