@@ -58,7 +58,7 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
     """
     logger.info(f"Extracting data from text: {len(text)} chars")
     
-    client = get_groq_client()
+    client = get_groq_client() # Lazy initialization of Groq client
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
         messages=[
