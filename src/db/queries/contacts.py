@@ -115,6 +115,14 @@ async def list_contacts(
     result = await db.execute(query)
     return list(result.scalars().all())
 
+def escape_like(value: str) -> str:
+    """Escape special characters for LIKE queries."""
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 async def search_contacts_by_name(
     db: AsyncSession,
@@ -122,10 +130,13 @@ async def search_contacts_by_name(
     tenant_id: str = "default",
     limit: int = 10,
 ) -> list[Contact]:
-    """Search contacts by name using ILIKE."""
+    escaped_name = escape_like(name)
     result = await db.execute(
         select(Contact)
-        .where(Contact.tenant_id == tenant_id, Contact.name.ilike(f"%{name}%"))
+        .where(
+            Contact.tenant_id == tenant_id,
+            Contact.name.ilike(f"%{escaped_name}%", escape="\\")
+        )
         .order_by(Contact.name)
         .limit(limit)
     )

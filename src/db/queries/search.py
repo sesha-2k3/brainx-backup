@@ -1,11 +1,29 @@
 # Queries: Full-text search and filtered listing queries
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import select, or_, and_, func
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Contact, Interaction
+
+
+def _escape_like(value: str) -> str:
+    """
+    Escape special characters for LIKE/ILIKE queries.
+    
+    Special characters in LIKE:
+    - % matches any sequence of characters
+    - _ matches any single character
+    - \ is the escape character
+    """
+    return (
+        value
+        .replace("\\", "\\\\")  # Escape backslash first
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 
 async def search_all(
@@ -18,14 +36,19 @@ async def search_all(
     Search across contacts and interactions.
     Returns dict with 'contacts' and 'interactions' lists.
     """
-    query_lower = query_text.lower()
+    if not query_text.strip():
+        return {"contacts": [], "interactions": []}
+    
+    # Escape special characters and prepare pattern
+    escaped_query = _escape_like(query_text.lower())
+    pattern = f"%{escaped_query}%"
     
     # Search contacts
     contacts_result = await db.execute(
         select(Contact)
         .where(
             Contact.tenant_id == tenant_id,
-            Contact.search_vector.ilike(f"%{query_lower}%"),
+            Contact.search_vector.ilike(pattern, escape="\\"),
         )
         .order_by(Contact.updated_at.desc())
         .limit(limit)
@@ -37,7 +60,7 @@ async def search_all(
         select(Interaction)
         .where(
             Interaction.tenant_id == tenant_id,
-            Interaction.search_vector.ilike(f"%{query_lower}%"),
+            Interaction.search_vector.ilike(pattern, escape="\\"),
         )
         .order_by(Interaction.occurred_at.desc())
         .limit(limit)
@@ -60,7 +83,7 @@ async def get_contacts_by_category(
     """Get contacts filtered by category, optionally since a date."""
     query = select(Contact).where(
         Contact.tenant_id == tenant_id,
-        Contact.category == category,
+        Contact.category == category,  # Exact match, no LIKE needed
     )
     if since:
         query = query.where(Contact.updated_at >= since)
@@ -77,12 +100,19 @@ async def get_interactions_by_company(
     limit: int = 20,
 ) -> list[Interaction]:
     """Get interactions for contacts at a specific company."""
+    if not company.strip():
+        return []
+    
+    # Escape special characters for LIKE
+    escaped_company = _escape_like(company)
+    pattern = f"%{escaped_company}%"
+    
     # First get contacts at this company
     contacts_result = await db.execute(
         select(Contact.id)
         .where(
             Contact.tenant_id == tenant_id,
-            Contact.company.ilike(f"%{company}%"),
+            Contact.company.ilike(pattern, escape="\\"),
         )
     )
     contact_ids = [row[0] for row in contacts_result.fetchall()]
@@ -109,9 +139,8 @@ async def get_recent_activity(
     limit: int = 50,
 ) -> list[Interaction]:
     """Get all interactions from the last N days."""
-    since = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    from datetime import timedelta
-    since = since - timedelta(days=days)
+    now = datetime.now(timezone.utc)
+    since = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
     
     result = await db.execute(
         select(Interaction)
@@ -128,16 +157,28 @@ async def get_recent_activity(
 async def get_contact_with_interactions(
     db: AsyncSession,
     contact_id: str,
+    tenant_id: str = "default",  # Added tenant_id for security
     interaction_limit: int = 10,
 ) -> Optional[dict]:
     """Get a contact with their recent interactions."""
-    contact = await db.get(Contact, contact_id)
+    # Fetch with tenant_id check to prevent cross-tenant access
+    result = await db.execute(
+        select(Contact).where(
+            Contact.id == contact_id,
+            Contact.tenant_id == tenant_id,
+        )
+    )
+    contact = result.scalar_one_or_none()
+    
     if not contact:
         return None
     
     interactions_result = await db.execute(
         select(Interaction)
-        .where(Interaction.contact_id == contact_id)
+        .where(
+            Interaction.contact_id == contact_id,
+            Interaction.tenant_id == tenant_id,  # Also filter interactions
+        )
         .order_by(Interaction.occurred_at.desc())
         .limit(interaction_limit)
     )
