@@ -4,9 +4,8 @@ import json
 import logging
 from typing import Any
 
-from groq import AsyncGroq
-
 from src.config import get_settings
+from src.services.groq_client import get_groq_client
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +104,7 @@ async def semantic_search_with_explanation(
     prompt = SEARCH_PROMPT.format(context=context, query=query)
     
     settings = get_settings()
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = get_groq_client()
     
     try:
         response = await client.chat.completions.create(

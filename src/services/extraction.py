@@ -3,9 +3,7 @@
 import asyncio
 import json
 import logging
-from functools import lru_cache
 
-from groq import AsyncGroq
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -15,7 +13,9 @@ from tenacity import (
 
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
+from src.services.groq_client import get_groq_client
 from src.utils.text import parse_llm_json
+
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,6 @@ JSON only, no explanation:"""
 class ExtractionError(Exception):
     """Raised when contact extraction fails."""
     pass
-
-@lru_cache()
-def get_groq_client() -> AsyncGroq:
-    """Lazy initialization of Groq client."""
-    settings = get_settings()
-    return AsyncGroq(api_key=settings.groq_api_key)
 
 @retry(
     stop=stop_after_attempt(3),

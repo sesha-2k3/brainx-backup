@@ -2,17 +2,12 @@
 
 import json
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
-
-from groq import AsyncGroq
+from datetime import datetime, timedelta, timezone
 
 from src.config import get_settings
+from src.services.groq_client import get_groq_client
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
-
-client = AsyncGroq(api_key=settings.groq_api_key)
 
 QUERY_PARSER_PROMPT = """Parse this search query into a structured format.
 
@@ -54,7 +49,10 @@ async def parse_query(query: str) -> dict:
     """
     logger.info(f"Parsing query: {query}")
     
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    settings = get_settings()
+    client = get_groq_client()
+    
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
@@ -90,11 +88,12 @@ async def parse_query(query: str) -> dict:
             "filters": {"query_text": query}
         }
 
+
 def _resolve_dates(filters: dict) -> dict:
     """
     Resolve relative date strings to actual dates.
     """
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Handle date_range
     if "date_range" in filters:

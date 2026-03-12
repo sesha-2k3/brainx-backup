@@ -3,14 +3,10 @@
 import logging
 from pathlib import Path
 
-from groq import AsyncGroq
-
 from src.config import get_settings
+from src.services.groq_client import get_groq_client
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
-
-client = AsyncGroq(api_key=settings.groq_api_key)
 
 
 async def transcribe_audio(file_path: str) -> dict:
@@ -23,6 +19,9 @@ async def transcribe_audio(file_path: str) -> dict:
         raise FileNotFoundError(f"Audio file not found: {file_path}")
     
     logger.info(f"Transcribing audio file: {file_path}")
+    
+    settings = get_settings()
+    client = get_groq_client()
     
     with open(file_path, "rb") as audio_file:
         transcription = await client.audio.transcriptions.create(
@@ -45,6 +44,9 @@ async def transcribe_audio_bytes(audio_bytes: bytes, filename: str = "audio.ogg"
     Transcribe audio from bytes.
     """
     logger.info(f"Transcribing audio bytes: {len(audio_bytes)} bytes")
+    
+    settings = get_settings()
+    client = get_groq_client()
     
     transcription = await client.audio.transcriptions.create(
         model=settings.groq_whisper_model,
