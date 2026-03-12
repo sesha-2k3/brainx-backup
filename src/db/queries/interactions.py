@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Interaction
+from src.utils.text import escape_like
 
 
 async def create_interaction(
@@ -33,6 +34,7 @@ async def create_interaction(
     db.add(interaction)
     await db.flush()
     return interaction
+
 
 async def list_interactions_for_contact(
     db: AsyncSession,
@@ -72,9 +74,12 @@ async def search_interactions(
     limit: int = 20,
 ) -> list[Interaction]:
     """Search interactions by summary/transcript using ILIKE."""
+    # Escape special LIKE characters
+    escaped_query = escape_like(query_text.lower())
+    
     query = select(Interaction).where(
         Interaction.tenant_id == tenant_id,
-        Interaction.search_vector.ilike(f"%{query_text.lower()}%"),
+        Interaction.search_vector.ilike(f"%{escaped_query}%", escape="\\"),
     )
     if contact_id:
         query = query.where(Interaction.contact_id == contact_id)
@@ -90,6 +95,7 @@ def _build_search_vector(interaction: Interaction) -> str:
         interaction.raw_transcript or "",
     ]
     return " ".join(filter(None, parts)).lower()
+
 
 async def get_interaction_by_id(
     db: AsyncSession,
@@ -119,6 +125,10 @@ async def update_interaction(
     for key, value in kwargs.items():
         if hasattr(interaction, key):
             setattr(interaction, key, value)
+    
+    # Rebuild search vector if summary or transcript changed
+    if "summary" in kwargs or "raw_transcript" in kwargs:
+        interaction.search_vector = _build_search_vector(interaction)
     
     await db.flush()
     return interaction
