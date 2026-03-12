@@ -21,9 +21,16 @@ class ContactBase(BaseModel):
     context: Optional[str] = None
 
 
-class ContactCreate(ContactBase):
+class ContactCreate(BaseModel):
     """Fields for creating a new contact."""
-    pass
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None  # str to accept any value from API
+    context: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ContactUpdate(BaseModel):
@@ -33,10 +40,11 @@ class ContactUpdate(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     role: Optional[str] = None
-    category: Optional[ContactCategory] = None
+    category: Optional[str] = None  # str to accept any value from API
     tags: Optional[list[str]] = None
     notes: Optional[str] = None
     context: Optional[str] = None
+    reminder_frequency: Optional[str] = None  # weekly, every_3_days, every_2_weeks, monthly
 
 
 class ContactResponse(ContactBase):
@@ -60,10 +68,12 @@ class ContactSummary(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ExtractedTask(BaseModel):
     """A single extracted task."""
     title: str
     due_date: Optional[str] = None
+
 
 class ExtractedContactData(BaseModel):
     """Structured data extracted from voice/text input."""
@@ -75,7 +85,7 @@ class ExtractedContactData(BaseModel):
     category: Optional[ContactCategory] = None
     context: Optional[str] = None
     interaction_summary: Optional[str] = None
-    tasks: list[ExtractedTask] = []
+    tasks: list[ExtractedTask] = Field(default_factory=list)
     
     # Legacy fields for backward compatibility
     follow_up: Optional[str] = None

@@ -20,7 +20,8 @@ class TaskUpdate(BaseModel):
     """Fields for updating a task."""
     title: Optional[str] = None
     description: Optional[str] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[str] = None  # str to support relative dates like "tomorrow"
+    contact_id: Optional[str] = None
     reminder_at: Optional[datetime] = None
 
 
