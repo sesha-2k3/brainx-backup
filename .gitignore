@@ -63,6 +63,5 @@ Thumbs.db
 # Frontend
 frontend/node_modules
 
-# Sample Input
-sample_input.txt
-Explain.md
+# Local files for reference
+local/
