@@ -6,6 +6,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Task, TaskStatus
+from sqlalchemy.orm import selectinload
 
 
 async def create_task(
@@ -33,7 +34,7 @@ async def create_task(
 
 
 async def get_task_by_id(db: AsyncSession, task_id: str) -> Optional[Task]:
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.id == task_id).options(selectinload(Task.contact)))
     return result.scalar_one_or_none()
 
 
@@ -64,16 +65,19 @@ async def list_pending_tasks(
     contact_id: Optional[str] = None,
     limit: int = 50,
 ) -> list[Task]:
-    query = select(Task).where(
-        Task.tenant_id == tenant_id,
-        Task.status == TaskStatus.PENDING,
+    query = (
+        select(Task)
+        .options(selectinload(Task.contact))  # Eager load contact
+        .where(
+            Task.tenant_id == tenant_id,
+            Task.status == TaskStatus.PENDING,
+        )
     )
     if contact_id:
         query = query.where(Task.contact_id == contact_id)
     query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
-
 
 async def list_tasks_due_by(
     db: AsyncSession,
