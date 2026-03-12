@@ -1,7 +1,7 @@
 # Utils: Text cleaning and processing
 
 import re
-from typing import Optional
+from typing import Optional, Any
 
 
 def clean_text(text: Optional[str]) -> str:
@@ -92,3 +92,18 @@ def escape_like(value: str) -> str:
         .replace("%", "\\%")
         .replace("_", "\\_")
     )
+
+def parse_llm_json(content: str) -> Any:
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    content = content.strip()
+    
+    # Remove markdown code blocks
+    if content.startswith("```"):
+        lines = content.split("\n")
+        # Remove first and last lines (``` markers)
+        content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        # Remove language identifier
+        if content.startswith("json"):
+            content = content[4:].strip()
+    
+    return json.loads(content)
