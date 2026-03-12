@@ -31,8 +31,11 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/api", tags=["web"])
 
+# Security limits
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
-# Request/Response models (specific to api endpoints)
+
+# Request/Response models (web.py-specific, not shared with other modules)
 
 class TextInput(BaseModel):
     text: str
@@ -120,7 +123,20 @@ async def process_file_input(
     db: AsyncSession = Depends(get_db),
 ):
     """Process uploaded file (voice or image) and extract contact data."""
-    content = await file.read()
+    # Check content length header for fast rejection
+    if file.size and file.size > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+    
+    # Read in chunks to enforce limit even without Content-Length header
+    chunks = []
+    total_size = 0
+    while chunk := await file.read(1024 * 1024):  # 1MB chunks
+        total_size += len(chunk)
+        if total_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+        chunks.append(chunk)
+    
+    content = b"".join(chunks)
     content_type = file.content_type or ""
     
     extracted = None
