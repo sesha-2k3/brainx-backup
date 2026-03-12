@@ -32,9 +32,7 @@ settings = get_settings()
 router = APIRouter(prefix="/api", tags=["web"])
 
 
-# ============================================================================
-# Request/Response models (web.py-specific, not shared with other modules)
-# ============================================================================
+# Request/Response models (specific to api endpoints)
 
 class TextInput(BaseModel):
     text: str
@@ -65,9 +63,7 @@ class ProposalConfirmData(BaseModel):
     tasks: list[dict] = []  # Array of {title, due_date}
 
 
-# ============================================================================
 # Input Processing Endpoints
-# ============================================================================
 
 @router.post("/input/text")
 async def process_text_input(
