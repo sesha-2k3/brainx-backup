@@ -1,4 +1,28 @@
 # Service: Natural language query parsing using LLM
+"""
+Purpose: Natural language query router that classifies user search intent and extracts structured filters using LLM.
+
+Status: Implemented but not wired up. Ready to use when you want smarter search routing.
+
+Functions:
+
+| Function | Description |
+|----------|-------------|
+| `parse_query(query)` | Sends query to Groq LLM, returns `{intent, filters}` |
+| `_resolve_dates(filters)` | Converts relative dates (`"today"`, `"30_days_ago"`) to ISO strings |
+| `format_search_results(results, query)` | Formats results as human-readable text (for WhatsApp) |
+
+**Intents supported:**
+- `contact_lookup` — "Who is Eddie?"
+- `filtered_list` — "Show me all investors"
+- `task_query` — "What's due today?"
+- `interaction_search` — "What did we discuss with BCBS?"
+- `fts_search` — Fallback for general queries
+
+Future use: Wire into `/api/search` endpoint to route queries to specialized handlers instead of always using semantic search. 
+            Would reduce LLM costs and improve response times for simple queries like "tasks due today" 
+            (no need to load all contacts and call LLM).
+"""
 
 import json
 import logging
