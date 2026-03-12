@@ -76,3 +76,19 @@ def build_search_text(*fields: Optional[str]) -> str:
     """
     parts = [clean_text(f) for f in fields if f]
     return " ".join(parts).lower()
+
+def escape_like(value: str) -> str:
+    """
+    Escape special characters for LIKE/ILIKE queries.
+    
+    Special characters in LIKE:
+    - % matches any sequence of characters
+    - _ matches any single character
+    - \ is the escape character
+    """
+    return (
+        value
+        .replace("\\", "\\\\")  # Escape backslash first
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
