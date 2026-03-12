@@ -122,7 +122,7 @@ def _quick_extract(text: str) -> dict:
         phone = re.sub(r'[^\d+]', '', phones[0])
         result["phone"] = phone
     
-    # Extract URL
+    # Extract URL (feature to be added in future)
     urls = URL_PATTERN.findall(text)
     if urls:
         result["url"] = urls[0]
