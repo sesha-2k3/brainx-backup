@@ -90,7 +90,6 @@ async def parse_query(query: str) -> dict:
             "filters": {"query_text": query}
         }
 
-
 def _resolve_dates(filters: dict) -> dict:
     """
     Resolve relative date strings to actual dates.

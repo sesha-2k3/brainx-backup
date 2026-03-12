@@ -15,6 +15,7 @@ from tenacity import (
 
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
+from src.utils.text import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -65,21 +66,6 @@ def get_groq_client() -> AsyncGroq:
     settings = get_settings()
     return AsyncGroq(api_key=settings.groq_api_key)
 
-def _parse_llm_json(content: str) -> dict:
-    """Parse JSON from LLM response, handling markdown code blocks."""
-    content = content.strip()
-    
-    if content.startswith("```"):
-        lines = content.split("\n")
-        if lines[-1].strip() == "```":
-            content = "\n".join(lines[1:-1])
-        else:
-            content = "\n".join(lines[1:])
-        if content.startswith("json"):
-            content = content[4:].strip()
-    
-    return json.loads(content)
-
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
@@ -123,7 +109,7 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
     
     # Parse JSON response
     try:
-        data = _parse_llm_json(content)
+        data = parse_llm_json(content)
         extracted = ExtractedContactData(**data)
         
         if not extracted.name:
