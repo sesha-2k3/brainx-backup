@@ -1,4 +1,6 @@
+// src/App.jsx
 import { Routes, Route, NavLink } from 'react-router-dom'
+import ErrorBoundary from './components/ErrorBoundary'
 import HomePage from './pages/HomePage'
 import AddContactPage from './pages/AddContactPage'
 import ContactsPage from './pages/ContactsPage'
@@ -16,7 +18,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
+      {/* Navigation - OUTSIDE error boundary so it always shows */}
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-5xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
@@ -47,17 +49,19 @@ function App() {
         </div>
       </nav>
 
-      {/* Main Content */}
+      {/* Main Content - INSIDE error boundary */}
       <main className="max-w-5xl mx-auto px-4 py-8">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/add-contact" element={<AddContactPage />} />
-          <Route path="/contacts" element={<ContactsPage />} />
-          <Route path="/contacts/:id" element={<ContactDetailPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/reminders" element={<RemindersPage />} />
-          <Route path="/search" element={<SearchPage />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/add-contact" element={<AddContactPage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
+            <Route path="/contacts/:id" element={<ContactDetailPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/reminders" element={<RemindersPage />} />
+            <Route path="/search" element={<SearchPage />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   )
