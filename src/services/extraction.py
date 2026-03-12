@@ -143,6 +143,9 @@ TEXT:
 
 SUMMARY:"""
 
+    settings = get_settings()
+    client = get_groq_client()
+
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
         messages=[{"role": "user", "content": prompt}],
@@ -166,6 +169,9 @@ MESSAGE:
 {text}
 
 JSON:"""
+
+    settings = get_settings()
+    client = get_groq_client()
 
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
