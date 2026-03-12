@@ -1,4 +1,6 @@
-# Schemas: Pydantic models for contact data
+"""
+Contact Schemas - Pydantic models for contact data
+"""
 
 from datetime import datetime
 from typing import Optional
