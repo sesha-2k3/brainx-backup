@@ -94,9 +94,16 @@ def _build_search_vector(interaction: Interaction) -> str:
 async def get_interaction_by_id(
     db: AsyncSession,
     interaction_id: str,
+    tenant_id: str = "default",
 ) -> Optional[Interaction]:
-    """Get an interaction by ID."""
-    return await db.get(Interaction, interaction_id)
+    """Get an interaction by ID, scoped to tenant."""
+    result = await db.execute(
+        select(Interaction).where(
+            Interaction.id == interaction_id,
+            Interaction.tenant_id == tenant_id,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def update_interaction(
