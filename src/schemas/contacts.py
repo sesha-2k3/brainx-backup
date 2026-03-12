@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
+from src.schemas.contact_category_enums import ContactCategory
 
 
 class ContactBase(BaseModel):
@@ -12,7 +13,7 @@ class ContactBase(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     role: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[ContactCategory] = None
     tags: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
     context: Optional[str] = None
@@ -30,7 +31,7 @@ class ContactUpdate(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     role: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[ContactCategory] = None
     tags: Optional[list[str]] = None
     notes: Optional[str] = None
     context: Optional[str] = None
@@ -52,7 +53,7 @@ class ContactSummary(BaseModel):
     id: str
     name: str
     company: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[ContactCategory] = None
 
     class Config:
         from_attributes = True
@@ -69,7 +70,7 @@ class ExtractedContactData(BaseModel):
     phone: Optional[str] = None
     company: Optional[str] = None
     role: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[ContactCategory] = None
     context: Optional[str] = None
     interaction_summary: Optional[str] = None
     tasks: list[ExtractedTask] = []
