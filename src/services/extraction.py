@@ -131,6 +131,8 @@ async def extract_contact_data_safe(text: str) -> ExtractedContactData:
         logger.error(f"Extraction failed after retries: {e}")
         return ExtractedContactData()
 
+# TODO: Add these in future releases!
+
 async def summarize_interaction(text: str, max_length: int = 200) -> str:
     """
     Generate a concise summary of an interaction.
@@ -155,6 +157,7 @@ SUMMARY:"""
     
     return response.choices[0].message.content.strip()
 
+# TODO: Add these in future releases!
 
 async def detect_intent(text: str) -> dict:
     """
