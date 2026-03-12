@@ -1,17 +1,25 @@
 # Service: LLM-based extraction of contact and interaction data
 
+import asyncio
 import json
 import logging
-from typing import Optional
 from functools import lru_cache
+
 from groq import AsyncGroq
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
-MAX_EXTRACTION_TEXT_LENGTH = 6000
+MAX_EXTRACTION_TEXT_LENGTH = 6_000
+EXTRACTION_TIMEOUT = 30.0
 EXTRACTION_PROMPT = """Extract contact information and ALL tasks/follow-ups from this text.
 
 TEXT:
@@ -47,14 +55,45 @@ Example output:
 
 JSON only, no explanation:"""
 
+class ExtractionError(Exception):
+    """Raised when contact extraction fails."""
+    pass
+
 @lru_cache()
 def get_groq_client() -> AsyncGroq:
     """Lazy initialization of Groq client."""
     settings = get_settings()
     return AsyncGroq(api_key=settings.groq_api_key)
 
+def _parse_llm_json(content: str) -> dict:
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    content = content.strip()
+    
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines[-1].strip() == "```":
+            content = "\n".join(lines[1:-1])
+        else:
+            content = "\n".join(lines[1:])
+        if content.startswith("json"):
+            content = content[4:].strip()
+    
+    return json.loads(content)
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((asyncio.TimeoutError, ExtractionError)),
+    reraise=True,
+)
 async def extract_contact_data(text: str) -> ExtractedContactData:
-    """Extract structured contact data from free-form text using LLM."""
+    """
+    Extract structured contact data from free-form text using LLM.
+    
+    Raises:
+        ExtractionError: If extraction fails after retries
+    """
+    settings = get_settings()
     
     # Limit input size
     if len(text) > MAX_EXTRACTION_TEXT_LENGTH:
@@ -63,37 +102,54 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
     
     logger.info(f"Extracting data from text: {len(text)} chars")
     
-    client = get_groq_client() # Lazy initialization of Groq client
-    response = await client.chat.completions.create(
-        model=settings.groq_llm_model,
-        messages=[
-            {"role": "user", "content": EXTRACTION_PROMPT.format(text=text)}
-        ],
-        temperature=0.1,
-        max_tokens=500,
-    )
+    client = get_groq_client()
+    
+    # Call LLM with timeout
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=settings.groq_llm_model,
+                messages=[{"role": "user", "content": EXTRACTION_PROMPT.format(text=text)}],
+                temperature=0.1,
+                max_tokens=500,
+            ),
+            timeout=EXTRACTION_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Extraction timed out, will retry...")
+        raise  # Reraise to trigger retry
     
     content = response.choices[0].message.content.strip()
     
     # Parse JSON response
     try:
-        # Handle potential markdown code blocks
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        
-        data = json.loads(content)
+        data = _parse_llm_json(content)
         extracted = ExtractedContactData(**data)
+        
+        if not extracted.name:
+            raise ExtractionError("No name extracted from text")
+        
         logger.info(f"Extracted contact: {extracted.name}")
         return extracted
     
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.error(f"Failed to parse extraction response: {e}")
-        logger.debug(f"Raw response: {content}")
-        # Return empty extraction
-        return ExtractedContactData()
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse LLM response, will retry: {e}")
+        raise ExtractionError(f"Invalid JSON response: {e}") from e
+    
+    except ValueError as e:
+        logger.warning(f"Invalid extracted data, will retry: {e}")
+        raise ExtractionError(f"Validation failed: {e}") from e
 
+async def extract_contact_data_safe(text: str) -> ExtractedContactData:
+    """
+    Safe wrapper that returns empty data instead of raising.
+    Use this in endpoints where you want graceful degradation.
+    """
+    try:
+        return await extract_contact_data(text)
+    except (ExtractionError, asyncio.TimeoutError) as e:
+        logger.error(f"Extraction failed after retries: {e}")
+        return ExtractedContactData()
 
 async def summarize_interaction(text: str, max_length: int = 200) -> str:
     """
