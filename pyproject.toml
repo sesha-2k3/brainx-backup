@@ -1,38 +1,64 @@
 [project]
 name = "brainx"
 version = "0.1.0"
-description = "Personal CRM"
+description = "AI-powered Personal CRM"
 requires-python = ">=3.11"
 
 dependencies = [
+    # Web framework
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    # Data validation
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
+    # Database
     "sqlalchemy[asyncio]>=2.0.25",
     "asyncpg>=0.29.0",
     "alembic>=1.13.0",
+    # HTTP client
     "httpx>=0.26.0",
+    # AI/ML
     "groq>=0.4.0",
     "pytesseract>=0.3.10",
     "Pillow>=10.2.0",
-    "apscheduler>=3.10.4",
+    # Utilities
     "python-dateutil>=2.8.2",
     "phonenumbers>=8.13.0",
-    "python-multipart>=0.0.6",
+    "tenacity>=8.2.0",
+    # Background tasks
+    "apscheduler>=3.10.4",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+prod = [
+    "gunicorn>=21.0.0",
+    "sentry-sdk[fastapi]>=1.0",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "ASYNC", # flake8-async (catches async issues!)
+]
+ignore = ["E501"]
