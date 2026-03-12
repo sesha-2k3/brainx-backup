@@ -4,20 +4,35 @@ const API_BASE = '/api'
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  })
   
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Request failed' }))
-    throw new Error(error.detail || 'Request failed')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      signal: controller.signal,
+      ...options,
+    })
+    
+    clearTimeout(timeout)
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Request failed' }))
+      throw new Error(error.detail || 'Request failed')
+    }
+    
+    return response.json()
+  } catch (error) {
+    clearTimeout(timeout)
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout')
+    }
+    throw error
   }
-  
-  return response.json()
 }
 
 // Input processing
