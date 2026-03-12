@@ -7,23 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Contact, Interaction
-
-
-def _escape_like(value: str) -> str:
-    """
-    Escape special characters for LIKE/ILIKE queries.
-    
-    Special characters in LIKE:
-    - % matches any sequence of characters
-    - _ matches any single character
-    - \ is the escape character
-    """
-    return (
-        value
-        .replace("\\", "\\\\")  # Escape backslash first
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-    )
+from src.utils.text import escape_like
 
 
 async def search_all(
@@ -40,7 +24,7 @@ async def search_all(
         return {"contacts": [], "interactions": []}
     
     # Escape special characters and prepare pattern
-    escaped_query = _escape_like(query_text.lower())
+    escaped_query = escape_like(query_text.lower())
     pattern = f"%{escaped_query}%"
     
     # Search contacts

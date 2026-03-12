@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.utils.text import escape_like
 from src.db.models import Contact
 
 
@@ -100,7 +101,6 @@ async def update_contact(
     await db.flush()
     return contact
 
-
 async def list_contacts(
     db: AsyncSession,
     tenant_id: str = "default",
@@ -114,15 +114,6 @@ async def list_contacts(
     query = query.order_by(Contact.updated_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     return list(result.scalars().all())
-
-def escape_like(value: str) -> str:
-    """Escape special characters for LIKE queries."""
-    return (
-        value
-        .replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-    )
 
 async def search_contacts_by_name(
     db: AsyncSession,
