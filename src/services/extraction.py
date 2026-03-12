@@ -11,6 +11,7 @@ from src.schemas.contacts import ExtractedContactData
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+MAX_EXTRACTION_TEXT_LENGTH = 6000
 EXTRACTION_PROMPT = """Extract contact information and ALL tasks/follow-ups from this text.
 
 TEXT:
@@ -53,9 +54,13 @@ def get_groq_client() -> AsyncGroq:
     return AsyncGroq(api_key=settings.groq_api_key)
 
 async def extract_contact_data(text: str) -> ExtractedContactData:
-    """
-    Extract structured contact data from free-form text using LLM.
-    """
+    """Extract structured contact data from free-form text using LLM."""
+    
+    # Limit input size
+    if len(text) > MAX_EXTRACTION_TEXT_LENGTH:
+        logger.warning(f"Text truncated from {len(text)} to {MAX_EXTRACTION_TEXT_LENGTH} chars")
+        text = text[:MAX_EXTRACTION_TEXT_LENGTH]
+    
     logger.info(f"Extracting data from text: {len(text)} chars")
     
     client = get_groq_client() # Lazy initialization of Groq client
