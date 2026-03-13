@@ -1,12 +1,12 @@
 # Queries: Contact CRUD and lookup operations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.utils.text import escape_like
 from src.db.models import Contact
+from src.utils.text import escape_like
 
 
 async def create_contact(
@@ -42,21 +42,45 @@ async def create_contact(
     return contact
 
 
-async def get_contact_by_id(db: AsyncSession, contact_id: str) -> Optional[Contact]:
-    result = await db.execute(select(Contact).where(Contact.id == contact_id))
-    return result.scalar_one_or_none()
-
-
-async def get_contact_by_email(db: AsyncSession, email: str, tenant_id: str = "default") -> Optional[Contact]:
+async def get_contact_by_id(
+    db: AsyncSession,
+    contact_id: str,
+    tenant_id: str = "default",
+) -> Optional[Contact]:
+    """Get a contact by ID, scoped to tenant."""
     result = await db.execute(
-        select(Contact).where(Contact.email == email, Contact.tenant_id == tenant_id)
+        select(Contact).where(
+            Contact.id == contact_id,
+            Contact.tenant_id == tenant_id,
+        )
     )
     return result.scalar_one_or_none()
 
 
-async def get_contact_by_phone(db: AsyncSession, phone: str, tenant_id: str = "default") -> Optional[Contact]:
+async def get_contact_by_email(
+    db: AsyncSession,
+    email: str,
+    tenant_id: str = "default",
+) -> Optional[Contact]:
     result = await db.execute(
-        select(Contact).where(Contact.phone == phone, Contact.tenant_id == tenant_id)
+        select(Contact).where(
+            Contact.email == email,
+            Contact.tenant_id == tenant_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_contact_by_phone(
+    db: AsyncSession,
+    phone: str,
+    tenant_id: str = "default",
+) -> Optional[Contact]:
+    result = await db.execute(
+        select(Contact).where(
+            Contact.phone == phone,
+            Contact.tenant_id == tenant_id,
+        )
     )
     return result.scalar_one_or_none()
 
@@ -78,7 +102,10 @@ async def find_duplicate_contact(
         conditions.append(Contact.phone == phone)
     
     result = await db.execute(
-        select(Contact).where(Contact.tenant_id == tenant_id, or_(*conditions))
+        select(Contact).where(
+            Contact.tenant_id == tenant_id,
+            or_(*conditions),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -86,9 +113,11 @@ async def find_duplicate_contact(
 async def update_contact(
     db: AsyncSession,
     contact_id: str,
+    tenant_id: str = "default",
     **updates,
 ) -> Optional[Contact]:
-    contact = await get_contact_by_id(db, contact_id)
+    """Update a contact, scoped to tenant."""
+    contact = await get_contact_by_id(db, contact_id, tenant_id)
     if not contact:
         return None
     
@@ -97,9 +126,10 @@ async def update_contact(
             setattr(contact, key, value)
     
     contact.search_vector = _build_search_vector(contact)
-    contact.updated_at = datetime.utcnow()
+    contact.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return contact
+
 
 async def list_contacts(
     db: AsyncSession,
@@ -115,6 +145,7 @@ async def list_contacts(
     result = await db.execute(query)
     return list(result.scalars().all())
 
+
 async def search_contacts_by_name(
     db: AsyncSession,
     name: str,
@@ -126,7 +157,7 @@ async def search_contacts_by_name(
         select(Contact)
         .where(
             Contact.tenant_id == tenant_id,
-            Contact.name.ilike(f"%{escaped_name}%", escape="\\")
+            Contact.name.ilike(f"%{escaped_name}%", escape="\\"),
         )
         .order_by(Contact.name)
         .limit(limit)
@@ -146,12 +177,13 @@ def _build_search_vector(contact: Contact) -> str:
     ]
     return " ".join(filter(None, parts)).lower()
 
+
 async def get_contacts_due_for_reminder(
     db: AsyncSession,
     tenant_id: str = "default",
 ) -> list[Contact]:
     """Get contacts whose next_reminder_at is due."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(Contact)
         .where(
@@ -166,7 +198,7 @@ async def get_contacts_due_for_reminder(
 
 def calculate_next_reminder(frequency: str, from_date: datetime = None) -> datetime:
     """Calculate next reminder date based on frequency."""
-    from_date = from_date or datetime.utcnow()
+    from_date = from_date or datetime.now(timezone.utc)
     
     if frequency == "every_3_days":
         return from_date + timedelta(days=3)
