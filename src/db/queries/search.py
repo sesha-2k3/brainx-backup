@@ -88,7 +88,7 @@ async def get_interactions_by_company(
         return []
     
     # Escape special characters for LIKE
-    escaped_company = _escape_like(company)
+    escaped_company = escape_like(company)
     pattern = f"%{escaped_company}%"
     
     # First get contacts at this company
