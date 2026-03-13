@@ -67,7 +67,7 @@ async def get_contacts_by_category(
     """Get contacts filtered by category, optionally since a date."""
     query = select(Contact).where(
         Contact.tenant_id == tenant_id,
-        Contact.category == category,  # Exact match, no LIKE needed
+        Contact.category == category,
     )
     if since:
         query = query.where(Contact.updated_at >= since)
@@ -83,7 +83,7 @@ async def get_interactions_by_company(
     since: Optional[datetime] = None,
     limit: int = 20,
 ) -> list[Interaction]:
-    """Get interactions for contacts at a specific company."""
+    """Get interactions for contacts at a specific company using subquery join."""
     if not company.strip():
         return []
     
@@ -91,26 +91,26 @@ async def get_interactions_by_company(
     escaped_company = escape_like(company)
     pattern = f"%{escaped_company}%"
     
-    # First get contacts at this company
-    contacts_result = await db.execute(
+    # Use scalar subquery instead of fetching IDs into Python
+    # This lets PostgreSQL optimize as a single query plan
+    contact_subq = (
         select(Contact.id)
         .where(
             Contact.tenant_id == tenant_id,
             Contact.company.ilike(pattern, escape="\\"),
         )
+        .scalar_subquery()
     )
-    contact_ids = [row[0] for row in contacts_result.fetchall()]
     
-    if not contact_ids:
-        return []
-    
-    # Get interactions for those contacts
+    # Build interactions query using subquery
     query = select(Interaction).where(
         Interaction.tenant_id == tenant_id,
-        Interaction.contact_id.in_(contact_ids),
+        Interaction.contact_id.in_(contact_subq),
     )
+    
     if since:
         query = query.where(Interaction.occurred_at >= since)
+    
     query = query.order_by(Interaction.occurred_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -141,7 +141,7 @@ async def get_recent_activity(
 async def get_contact_with_interactions(
     db: AsyncSession,
     contact_id: str,
-    tenant_id: str = "default",  # Added tenant_id for security
+    tenant_id: str = "default",
     interaction_limit: int = 10,
 ) -> Optional[dict]:
     """Get a contact with their recent interactions."""
@@ -161,7 +161,7 @@ async def get_contact_with_interactions(
         select(Interaction)
         .where(
             Interaction.contact_id == contact_id,
-            Interaction.tenant_id == tenant_id,  # Also filter interactions
+            Interaction.tenant_id == tenant_id,
         )
         .order_by(Interaction.occurred_at.desc())
         .limit(interaction_limit)
