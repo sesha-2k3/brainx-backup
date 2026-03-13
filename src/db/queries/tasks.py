@@ -1,12 +1,12 @@
 # Queries: Task CRUD and scheduling operations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.db.models import Task, TaskStatus
-from sqlalchemy.orm import selectinload
 
 
 async def create_task(
@@ -33,24 +33,46 @@ async def create_task(
     return task
 
 
-async def get_task_by_id(db: AsyncSession, task_id: str) -> Optional[Task]:
-    result = await db.execute(select(Task).where(Task.id == task_id).options(selectinload(Task.contact)))
+async def get_task_by_id(
+    db: AsyncSession,
+    task_id: str,
+    tenant_id: str = "default",
+) -> Optional[Task]:
+    """Get a task by ID, scoped to tenant."""
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.contact))
+        .where(
+            Task.id == task_id,
+            Task.tenant_id == tenant_id,
+        )
+    )
     return result.scalar_one_or_none()
 
 
-async def complete_task(db: AsyncSession, task_id: str) -> Optional[Task]:
-    task = await get_task_by_id(db, task_id)
+async def complete_task(
+    db: AsyncSession,
+    task_id: str,
+    tenant_id: str = "default",
+) -> Optional[Task]:
+    """Mark a task as completed, scoped to tenant."""
+    task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
     
     task.status = TaskStatus.COMPLETED
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
     await db.flush()
     return task
 
 
-async def cancel_task(db: AsyncSession, task_id: str) -> Optional[Task]:
-    task = await get_task_by_id(db, task_id)
+async def cancel_task(
+    db: AsyncSession,
+    task_id: str,
+    tenant_id: str = "default",
+) -> Optional[Task]:
+    """Cancel a task, scoped to tenant."""
+    task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
     
@@ -67,7 +89,7 @@ async def list_pending_tasks(
 ) -> list[Task]:
     query = (
         select(Task)
-        .options(selectinload(Task.contact))  # Eager load contact
+        .options(selectinload(Task.contact))
         .where(
             Task.tenant_id == tenant_id,
             Task.status == TaskStatus.PENDING,
@@ -78,6 +100,7 @@ async def list_pending_tasks(
     query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
+
 
 async def list_tasks_due_by(
     db: AsyncSession,
@@ -116,8 +139,13 @@ async def get_due_reminders(
     return list(result.scalars().all())
 
 
-async def mark_reminder_sent(db: AsyncSession, task_id: str) -> Optional[Task]:
-    task = await get_task_by_id(db, task_id)
+async def mark_reminder_sent(
+    db: AsyncSession,
+    task_id: str,
+    tenant_id: str = "default",
+) -> Optional[Task]:
+    """Mark a task's reminder as sent, scoped to tenant."""
+    task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
     
@@ -129,23 +157,30 @@ async def mark_reminder_sent(db: AsyncSession, task_id: str) -> Optional[Task]:
 async def list_tasks_for_contact(
     db: AsyncSession,
     contact_id: str,
+    tenant_id: str = "default",
     include_completed: bool = False,
     limit: int = 20,
 ) -> list[Task]:
-    query = select(Task).where(Task.contact_id == contact_id)
+    """List tasks for a contact, scoped to tenant."""
+    query = select(Task).where(
+        Task.contact_id == contact_id,
+        Task.tenant_id == tenant_id,
+    )
     if not include_completed:
         query = query.where(Task.status == TaskStatus.PENDING)
     query = query.order_by(Task.due_date.asc().nullslast()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
 
+
 async def update_task(
     db: AsyncSession,
     task_id: str,
+    tenant_id: str = "default",
     **kwargs,
 ) -> Optional[Task]:
-    """Update a task with given fields."""
-    task = await db.get(Task, task_id)
+    """Update a task with given fields, scoped to tenant."""
+    task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
     
