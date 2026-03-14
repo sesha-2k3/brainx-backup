@@ -1,0 +1,17 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Red quadrant (top-left) -->
+  <path d="M4 4 L16 16 L16 4 L4 4 Z" fill="#C43B3B"/>
+  <path d="M4 4 L4 16 L16 16 L4 4 Z" fill="#C43B3B"/>
+  
+  <!-- Blue quadrant (top-right) -->
+  <path d="M28 4 L16 16 L16 4 L28 4 Z" fill="#3B5DC9"/>
+  <path d="M28 4 L28 16 L16 16 L28 4 Z" fill="#3B5DC9"/>
+  
+  <!-- Green quadrant (bottom-left) -->
+  <path d="M4 28 L16 16 L16 28 L4 28 Z" fill="#2D8F4E"/>
+  <path d="M4 28 L4 16 L16 16 L4 28 Z" fill="#2D8F4E"/>
+  
+  <!-- Gold quadrant (bottom-right) -->
+  <path d="M28 28 L16 16 L16 28 L28 28 Z" fill="#D4A03B"/>
+  <path d="M28 28 L28 16 L16 16 L28 28 Z" fill="#D4A03B"/>
+</svg>
