@@ -1,6 +1,6 @@
-// ExtractionPreview: Shows extracted data with inline editing before confirmation
+// ExtractionPreview.jsx — Shows extracted data with inline editing before confirmation
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 const CATEGORIES = ['investor', 'client', 'partner', 'friend', 'family', 'colleague', 'other']
 
@@ -61,138 +61,174 @@ function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
-      <h3 className="text-lg font-medium text-gray-900">Review Extracted Information</h3>
+    <form onSubmit={handleSubmit} className="card p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+          Review Extracted Information
+        </h3>
+        <span 
+          className="px-2 py-1 text-xs font-medium rounded-full"
+          style={{ backgroundColor: 'var(--color-success)', color: 'white' }}
+        >
+          AI Extracted
+        </span>
+      </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      {/* Basic Info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Name <span style={{ color: 'var(--color-error)' }}>*</span>
+          </label>
           <input
             type="text"
             value={formData.name}
             onChange={(e) => handleChange('name', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Email
+          </label>
           <input
             type="email"
             value={formData.email}
             onChange={(e) => handleChange('email', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Phone
+          </label>
           <input
             type="text"
             value={formData.phone}
             onChange={(e) => handleChange('phone', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Company
+          </label>
           <input
             type="text"
             value={formData.company}
             onChange={(e) => handleChange('company', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Role
+          </label>
           <input
             type="text"
             value={formData.role}
             onChange={(e) => handleChange('role', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Category
+          </label>
           <select
             value={formData.category}
             onChange={(e) => handleChange('category', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="input"
           >
             <option value="">Select...</option>
-            <option value="investor">Investor</option>
-            <option value="client">Client</option>
-            <option value="partner">Partner</option>
-            <option value="friend">Friend</option>
-            <option value="family">Family</option>
-            <option value="colleague">Colleague</option>
-            <option value="other">Other</option>
+            {CATEGORIES.map(cat => (
+              <option key={cat} value={cat}>
+                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </option>
+            ))}
           </select>
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Context (how you met)</label>
+        <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+          Context (how you met)
+        </label>
         <input
           type="text"
           value={formData.context}
           onChange={(e) => handleChange('context', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="input"
           placeholder="e.g., Met at tech conference"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Interaction Notes</label>
+        <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+          Interaction Notes
+        </label>
         <textarea
           value={formData.interaction_summary}
           onChange={(e) => handleChange('interaction_summary', e.target.value)}
           rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="input resize-none"
           placeholder="What did you discuss?"
         />
       </div>
 
       {/* Tasks Section */}
-      <div className="border-t pt-4">
+      <div className="pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
             Tasks / Follow-ups ({formData.tasks.length})
           </label>
           <button
             type="button"
             onClick={addTask}
-            className="text-sm text-blue-600 hover:text-blue-800"
+            className="text-sm font-medium flex items-center space-x-1"
+            style={{ color: 'var(--color-primary)' }}
           >
-            + Add Task
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Add Task</span>
           </button>
         </div>
         
         {formData.tasks.length === 0 ? (
-          <p className="text-sm text-gray-500">No tasks extracted. Click "Add Task" to add one.</p>
+          <p className="text-sm py-4 text-center" style={{ color: 'var(--color-text-muted)' }}>
+            No tasks extracted. Click "Add Task" to add one.
+          </p>
         ) : (
           <div className="space-y-3">
             {formData.tasks.map((task, index) => (
-              <div key={index} className="flex items-start space-x-2 bg-gray-50 p-3 rounded-lg">
-                <div className="flex-1 grid grid-cols-2 gap-2">
+              <div 
+                key={index} 
+                className="flex items-start space-x-2 p-3 rounded-lg"
+                style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+              >
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     type="text"
                     value={task.title}
                     onChange={(e) => handleTaskChange(index, 'title', e.target.value)}
                     placeholder="Task description"
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="input text-sm"
                   />
                   <input
                     type="text"
                     value={task.due_date || ''}
                     onChange={(e) => handleTaskChange(index, 'due_date', e.target.value)}
                     placeholder="Due date (e.g., tomorrow)"
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="input text-sm"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => removeTask(index)}
-                  className="text-red-500 hover:text-red-700 p-1"
+                  className="p-1.5 rounded hover:bg-secondary transition-colors"
+                  style={{ color: 'var(--color-error)' }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -204,18 +240,19 @@ function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
         )}
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4 border-t">
+      {/* Actions */}
+      <div className="flex justify-end space-x-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+          className="btn-secondary"
         >
           Cancel
         </button>
         <button
           type="submit"
-          disabled={submitting}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+          disabled={submitting || !formData.name.trim()}
+          className="btn-primary"
         >
           {submitting ? 'Saving...' : 'Save Contact'}
         </button>

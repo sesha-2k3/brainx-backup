@@ -1,62 +1,67 @@
-import { useState } from 'react'
-import { processText, processFile, confirmProposal } from '../api/client'
+// HomePage.jsx — Dashboard view with widgets
+
+import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { listContacts, listTasks, getDueReminders, confirmProposal } from '../api/client'
+import GreetingCard from '../components/dashboard/GreetingCard'
+import WeekCalendar from '../components/dashboard/WeekCalendar'
+import TodayTasks from '../components/dashboard/TodayTasks'
+import DueReminders from '../components/dashboard/DueReminders'
+import RecentContacts from '../components/dashboard/RecentContacts'
 import ExtractionPreview from '../components/ExtractionPreview'
 
 function HomePage() {
-  const [text, setText] = useState('')
-  const [file, setFile] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [extracted, setExtracted] = useState(null)
-  const [proposalId, setProposalId] = useState(null)
+  const location = useLocation()
+  const [loading, setLoading] = useState(true)
+  const [contacts, setContacts] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [dueReminders, setDueReminders] = useState([])
+  
+  // Handle extraction preview from quick capture
+  const [extracted, setExtracted] = useState(location.state?.extracted || null)
+  const [proposalId, setProposalId] = useState(location.state?.proposalId || null)
   const [success, setSuccess] = useState(null)
+  const [error, setError] = useState(null)
 
-  const handleTextSubmit = async (e) => {
-    e.preventDefault()
-    if (!text.trim()) return
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
 
+  const loadDashboardData = async () => {
     setLoading(true)
-    setError(null)
-    setSuccess(null)
-
     try {
-      const result = await processText(text)
-      setExtracted(result.extracted)
-      setProposalId(result.proposal_id)
-      setText('')
+      const [contactsRes, tasksRes, remindersRes] = await Promise.all([
+        listContacts({ limit: 10 }),
+        listTasks(),
+        getDueReminders(),
+      ])
+      
+      setContacts(contactsRes.contacts || [])
+      setTasks(tasksRes.tasks || [])
+      setDueReminders(remindersRes.contacts || [])
     } catch (err) {
-      setError(err.message || 'Failed to process text')
+      console.error('Failed to load dashboard:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleFileSubmit = async (e) => {
-    e.preventDefault()
-    if (!file) return
+  const handleTaskComplete = (taskId) => {
+    setTasks(tasks.filter(t => t.id !== taskId))
+  }
 
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
-    try {
-      const result = await processFile(file)
-      setExtracted(result.extracted)
-      setProposalId(result.proposal_id)
-      setFile(null)
-    } catch (err) {
-      setError(err.message || 'Failed to process file')
-    } finally {
-      setLoading(false)
-    }
+  const handleMarkContacted = (contactId) => {
+    setDueReminders(dueReminders.filter(c => c.id !== contactId))
   }
 
   const handleConfirm = async (formData) => {
+    setError(null)
     try {
       const result = await confirmProposal(proposalId, formData)
       setExtracted(null)
       setProposalId(null)
       setSuccess(`Saved ${result.contact_name}${result.tasks_created ? ` with ${result.tasks_created} task(s)` : ''}`)
+      loadDashboardData() // Refresh data
     } catch (err) {
       setError(err.message || 'Failed to save contact')
     }
@@ -67,84 +72,128 @@ function HomePage() {
     setProposalId(null)
   }
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Add Interaction</h1>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-          {success}
-        </div>
-      )}
-
-      {extracted ? (
+  // Show extraction preview if coming from quick capture
+  if (extracted) {
+    return (
+      <div className="space-y-6">
+        <GreetingCard />
+        
+        {error && (
+          <div 
+            className="px-4 py-3 rounded-lg"
+            style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)' }}
+          >
+            {error}
+          </div>
+        )}
+        
         <ExtractionPreview
           data={extracted}
           proposalId={proposalId}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />
-      ) : (
-        <div className="bg-white rounded-lg shadow p-6 space-y-6">
-          {/* Text Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Enter contact details or meeting notes
-            </label>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Paste meeting notes, voice transcripts, or describe an interaction (Including business cards). Tasks, Contact info and reminders will be extracted automatically."
-            />
-            <button
-              onClick={handleTextSubmit}
-              disabled={loading || !text.trim()}
-              className="mt-3 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300"
-            >
-              {loading ? 'Processing...' : 'Extract Contact'}
-            </button>
-          </div>
+      </div>
+    )
+  }
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">or upload a file</span>
-            </div>
-          </div>
+  return (
+    <div className="space-y-6">
+      <GreetingCard />
 
-          {/* File Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Upload voice note or business card image
-            </label>
-            <input
-              type="file"
-              onChange={(e) => setFile(e.target.files[0])}
-              accept=".mp3,.wav,.ogg,.m4a,.png,.jpg,.jpeg"
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            <p className="mt-1 text-xs text-gray-500">Supports: MP3, WAV, OGG, M4A, PNG, JPG</p>
-            {file && (
-              <button
-                onClick={handleFileSubmit}
-                disabled={loading}
-                className="mt-3 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300"
-              >
-                {loading ? 'Processing...' : 'Upload & Extract'}
-              </button>
-            )}
+      {/* Success message */}
+      {success && (
+        <div 
+          className="px-4 py-3 rounded-lg flex items-center justify-between"
+          style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--color-success)' }}
+        >
+          <span>{success}</span>
+          <button onClick={() => setSuccess(null)} className="text-lg">&times;</button>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="card h-48 animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
+            <div className="card h-64 animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
+          </div>
+          <div className="space-y-6">
+            <div className="card h-48 animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
+            <div className="card h-48 animate-pulse" style={{ backgroundColor: 'var(--color-bg-secondary)' }} />
           </div>
         </div>
+      ) : (
+        <>
+          {/* Recent Contacts Row */}
+          <RecentContacts contacts={contacts} />
+
+          {/* Main grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left column - Calendar & Tasks */}
+            <div className="lg:col-span-2 space-y-6">
+              <WeekCalendar tasks={tasks} />
+              <TodayTasks 
+                tasks={tasks} 
+                onTaskComplete={handleTaskComplete}
+              />
+            </div>
+
+            {/* Right column - Reminders */}
+            <div className="space-y-6">
+              <DueReminders 
+                contacts={dueReminders}
+                onMarkContacted={handleMarkContacted}
+              />
+
+              {/* Quick Stats */}
+              <div className="card p-4">
+                <h3 className="font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
+                  Quick Stats
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span style={{ color: 'var(--color-text-secondary)' }}>Total Contacts</span>
+                    <span className="font-semibold" style={{ color: 'var(--color-text)' }}>{contacts.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span style={{ color: 'var(--color-text-secondary)' }}>Pending Tasks</span>
+                    <span className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {tasks.filter(t => t.status === 'pending').length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span style={{ color: 'var(--color-text-secondary)' }}>Due Reminders</span>
+                    <span className="font-semibold" style={{ color: 'var(--color-accent-gold)' }}>
+                      {dueReminders.length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Keyboard shortcuts hint */}
+              <div 
+                className="card p-4 text-sm"
+                style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+              >
+                <h4 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+                  Keyboard Shortcuts
+                </h4>
+                <div className="space-y-1" style={{ color: 'var(--color-text-muted)' }}>
+                  <div className="flex justify-between">
+                    <span>Quick Search</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-surface text-xs">⌘K</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Quick Capture</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-surface text-xs">⌘N</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

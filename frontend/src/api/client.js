@@ -131,6 +131,13 @@ export async function createTask(data) {
   })
 }
 
+export async function updateTask(taskId, taskData) {
+  return request(`/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(taskData),
+  })
+}
+
 export async function completeTask(id) {
   return request(`/tasks/${id}/complete`, {
     method: 'POST',
@@ -148,20 +155,11 @@ export async function search(query) {
   return request(`/search?q=${encodeURIComponent(query)}`)
 }
 
-// Search contacts (semantic)
 export async function searchContacts(query) {
   return request(`/search?q=${encodeURIComponent(query)}`)
 }
 
-// update task function
-export async function updateTask(taskId, taskData) {
-  return request(`/tasks/${taskId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(taskData),
-  })
-}
-
-// Interaction Handling (CRUD)
+// Interactions
 export async function createInteraction(data) {
   return request('/interactions', {
     method: 'POST',
