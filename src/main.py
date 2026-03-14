@@ -29,7 +29,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
-    logger.info("Starting Personal CRM API...")
+    logger.info("Starting BrainX API...")
     
     # Initialize database tables (dev only - use migrations in production)
     if settings.is_development:
@@ -40,12 +40,12 @@ async def lifespan(app: FastAPI):
     
     # Cleanup
     await close_db()
-    logger.info("Personal CRM API shutdown complete")
+    logger.info("BrainX API shutdown complete")
 
 
 app = FastAPI(
-    title="Personal CRM",
-    description="WhatsApp-based personal relationship manager",
+    title="BrainX",
+    description="BrainX - Personal Relationship Manager",
     version="0.1.0",
     lifespan=lifespan,
 )
