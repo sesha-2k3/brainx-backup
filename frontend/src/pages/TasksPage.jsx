@@ -1,3 +1,5 @@
+// TasksPage.jsx — Task list with create, edit, complete, delete
+
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { listTasks, createTask, updateTask, completeTask, deleteTask, listContacts } from '../api/client'
@@ -129,69 +131,114 @@ function TasksPage() {
     ? tasks 
     : tasks.filter(t => t.status !== 'completed')
 
+  const pendingCount = tasks.filter(t => t.status === 'pending').length
+  const overdueCount = tasks.filter(t => isOverdue(t)).length
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Tasks</h1>
-        <label className="flex items-center space-x-2 text-sm text-gray-600">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>
+            Tasks
+          </h1>
+          <div className="flex items-center space-x-4 mt-1">
+            <span style={{ color: 'var(--color-text-secondary)' }}>
+              {pendingCount} pending
+            </span>
+            {overdueCount > 0 && (
+              <span style={{ color: 'var(--color-error)' }}>
+                {overdueCount} overdue
+              </span>
+            )}
+          </div>
+        </div>
+        
+        <label className="flex items-center space-x-2 text-sm cursor-pointer">
           <input
             type="checkbox"
             checked={showCompleted}
             onChange={(e) => setShowCompleted(e.target.checked)}
-            className="rounded border-gray-300"
+            className="w-4 h-4 rounded border-gray-300"
+            style={{ accentColor: 'var(--color-primary)' }}
           />
-          <span>Show completed</span>
+          <span style={{ color: 'var(--color-text-secondary)' }}>Show completed</span>
         </label>
       </div>
 
+      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
-          <button onClick={() => setError(null)} className="float-right">&times;</button>
+        <div 
+          className="px-4 py-3 rounded-lg flex items-center justify-between"
+          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)' }}
+        >
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-lg">&times;</button>
         </div>
       )}
 
       {/* Quick Add Task */}
-      <form onSubmit={handleAddTask} className="bg-white rounded-lg shadow p-4">
-        <div className="flex space-x-3">
+      <form onSubmit={handleAddTask} className="card p-4">
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
           <input
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="Add a new task..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="input flex-1"
           />
           <input
             type="date"
             value={newDueDate}
             onChange={(e) => setNewDueDate(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="input sm:w-auto"
           />
           <button
             type="submit"
             disabled={!newTitle.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300"
+            className="btn-primary"
           >
-            Add
+            Add Task
           </button>
         </div>
       </form>
 
       {/* Tasks List */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div 
+              key={i} 
+              className="card h-16 animate-pulse"
+              style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+            />
+          ))}
+        </div>
       ) : filteredTasks.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          {showCompleted ? 'No tasks yet.' : 'No pending tasks. You\'re all caught up!'}
+        <div className="card p-12 text-center">
+          <svg 
+            className="w-16 h-16 mx-auto mb-4 opacity-50"
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+          <p className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>
+            {showCompleted ? 'No tasks yet' : 'All caught up!'}
+          </p>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            {showCompleted ? 'Add your first task above' : 'No pending tasks. Great job!'}
+          </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow divide-y">
+        <div className="card divide-y" style={{ borderColor: 'var(--color-border)' }}>
           {filteredTasks.map(task => (
             <div
               key={task.id}
-              className={`px-6 py-4 ${
-                task.status === 'completed' ? 'bg-gray-50 opacity-60' : ''
-              } ${isOverdue(task) ? 'bg-red-50' : ''}`}
+              className={`px-4 py-4 ${task.status === 'completed' ? 'opacity-60' : ''}`}
+              style={isOverdue(task) ? { backgroundColor: 'rgba(239, 68, 68, 0.05)' } : {}}
             >
               {editingTask === task.id ? (
                 /* Edit Mode */
@@ -200,20 +247,20 @@ function TasksPage() {
                     type="text"
                     value={editForm.title}
                     onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="input"
                     autoFocus
                   />
-                  <div className="flex space-x-3">
+                  <div className="flex flex-wrap gap-3">
                     <input
                       type="date"
                       value={editForm.due_date}
                       onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="input w-auto"
                     />
                     <select
                       value={editForm.contact_id}
                       onChange={(e) => setEditForm({ ...editForm, contact_id: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="input w-auto"
                     >
                       <option value="">No contact</option>
                       {contacts.map(c => (
@@ -223,13 +270,13 @@ function TasksPage() {
                     <div className="flex-1" />
                     <button
                       onClick={handleCancelEdit}
-                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                      className="btn-secondary"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleSaveEdit}
-                      className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      className="btn-primary"
                     >
                       Save
                     </button>
@@ -238,63 +285,82 @@ function TasksPage() {
               ) : (
                 /* View Mode */
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-4 flex-1 min-w-0">
+                    {/* Checkbox */}
                     <button
                       onClick={() => handleComplete(task.id)}
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                        task.status === 'completed'
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 hover:border-green-500'
-                      }`}
+                      className={`
+                        w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                        transition-colors
+                      `}
+                      style={task.status === 'completed' 
+                        ? { backgroundColor: 'var(--color-success)', borderColor: 'var(--color-success)' }
+                        : { borderColor: 'var(--color-border)' }
+                      }
                     >
                       {task.status === 'completed' && (
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}
                     </button>
+                    
+                    {/* Task info */}
                     <div 
-                      className="cursor-pointer"
+                      className="cursor-pointer flex-1 min-w-0"
                       onClick={() => handleStartEdit(task)}
                     >
-                      <p className={`font-medium ${task.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                      <p 
+                        className={`font-medium truncate ${task.status === 'completed' ? 'line-through' : ''}`}
+                        style={{ color: task.status === 'completed' ? 'var(--color-text-muted)' : 'var(--color-text)' }}
+                      >
                         {task.title}
                       </p>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        {task.contact_name && (
-                          <Link 
-                            to={`/contacts/${task.contact_id}`} 
-                            className="text-blue-600 hover:underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {task.contact_name}
-                          </Link>
-                        )}
-                      </div>
+                      {task.contact_name && (
+                        <Link 
+                          to={`/contacts/${task.contact_id}`} 
+                          className="text-sm hover:underline"
+                          style={{ color: 'var(--color-primary)' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {task.contact_name}
+                        </Link>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
+                  
+                  <div className="flex items-center space-x-3 ml-4">
+                    {/* Due date */}
                     {task.due_date && (
-                      <span className={`text-sm ${isOverdue(task) ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                      <span 
+                        className="text-sm font-medium whitespace-nowrap"
+                        style={{ color: isOverdue(task) ? 'var(--color-error)' : 'var(--color-text-secondary)' }}
+                      >
                         {formatDate(task.due_date)}
                       </span>
                     )}
+                    
+                    {/* Edit button */}
                     <button
                       onClick={() => handleStartEdit(task)}
-                      className="text-gray-400 hover:text-blue-600"
+                      className="p-1.5 rounded hover:bg-secondary transition-colors"
+                      style={{ color: 'var(--color-text-muted)' }}
                       title="Edit"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
+                    
+                    {/* Delete button */}
                     <button
                       onClick={() => handleDelete(task.id)}
-                      className="text-gray-400 hover:text-red-600"
+                      className="p-1.5 rounded hover:bg-secondary transition-colors"
+                      style={{ color: 'var(--color-text-muted)' }}
                       title="Delete"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
                   </div>
