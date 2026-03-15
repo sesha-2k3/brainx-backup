@@ -9,7 +9,7 @@ Web-based personal relationship manager with AI-powered contact extraction.
 - Python 3.11+
 - Node.js 18+ (for frontend)
 - PostgreSQL 15+
-- Tesseract OCR (for business cards): `brew install tesseract`
+- Tesseract OCR: `brew install tesseract`
 
 ### 2. Setup
 
