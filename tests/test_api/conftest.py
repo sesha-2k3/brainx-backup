@@ -2,13 +2,14 @@
 API test fixtures.
 
 The TestClient exercises the full HTTP stack (routing, validation, serialization)
-but with FAKE dependencies injected via FastAPI's dependency_overrides:
+but with FAKE dependencies injected:
   - Database → same in-memory SQLite from conftest
-  - Settings → test settings (no real env vars needed)
+  - Settings → patched at both DI level AND module level in web.py
   - Groq client → stub (no network)
 
-This is an integration test through the HTTP boundary,
-NOT a unit test of individual endpoint functions.
+IMPORTANT: web.py captures `settings = get_settings()` at *module import time*.
+FastAPI's dependency_overrides only affects Depends(get_settings) injections —
+it does NOT touch that module-level variable. We must patch it explicitly.
 """
 
 import pytest
@@ -19,10 +20,11 @@ from httpx import AsyncClient, ASGITransport
 
 from src.db import get_db
 from src.config import get_settings, Settings
+from tests.conftest import TENANT_ID
 
 
 # ---------------------------------------------------------------------------
-# Test settings: no real env vars, no real Groq key
+# Test settings: matches TENANT_ID from root conftest
 # ---------------------------------------------------------------------------
 def get_test_settings() -> Settings:
     """Return test settings without needing a .env file."""
@@ -30,7 +32,7 @@ def get_test_settings() -> Settings:
         database_url="sqlite+aiosqlite:///:memory:",
         groq_api_key="test-fake-key",
         app_env="testing",
-        tenant_id="test-tenant",
+        tenant_id=TENANT_ID,
     )
 
 
@@ -48,9 +50,13 @@ async def client(db):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = get_test_settings
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    # Patch the MODULE-LEVEL settings variable in web.py
+    # so that settings.tenant_id matches our test TENANT_ID
+    test_settings = get_test_settings()
+    with patch("src.api.web.settings", test_settings):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
 
     # Clean up overrides
     app.dependency_overrides.clear()

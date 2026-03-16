@@ -12,43 +12,31 @@ Behaviors:
   - "DELETE /api/proposals/{id} rejects proposal"
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.db.queries import proposals as proposal_queries
+from src.schemas.contacts import ExtractedContactData, ExtractedTask
 from tests.conftest import TENANT_ID
-
-
-def _groq_extraction_response(name="Jane Doe", company="TestCo"):
-    """Build a fake Groq response that returns valid extracted data."""
-    response = MagicMock()
-    response.choices = [
-        MagicMock(
-            message=MagicMock(
-                content=(
-                    f'{{"name": "{name}", "email": "{name.lower().replace(" ", "")}@test.com", '
-                    f'"company": "{company}", "role": "Manager", "category": "client", '
-                    f'"context": "Met at conference", '
-                    f'"interaction_summary": "Discussed partnership", '
-                    f'"tasks": [{{"title": "Send proposal", "due_date": "next week"}}]}}'
-                )
-            )
-        )
-    ]
-    return response
 
 
 @pytest.mark.asyncio
 class TestTextInput:
 
-    @patch("src.services.extraction.get_groq_client")
-    async def test_process_text_creates_proposal(self, mock_get_client, client):
-        groq = AsyncMock()
-        groq.chat.completions.create = AsyncMock(
-            return_value=_groq_extraction_response("Alice Test", "AliceCorp")
+    @patch("src.api.web.extract_contact_data")
+    async def test_process_text_creates_proposal(self, mock_extract, client):
+        """Patch at web.py call site — bypasses tenacity retries entirely."""
+        mock_extract.return_value = ExtractedContactData(
+            name="Alice Test",
+            email="alice@test.com",
+            company="AliceCorp",
+            role="Manager",
+            category="client",
+            context="Met at conference",
+            interaction_summary="Discussed partnership",
+            tasks=[ExtractedTask(title="Send proposal", due_date="next week")],
         )
-        mock_get_client.return_value = groq
 
         resp = await client.post(
             "/api/input/text",
@@ -60,26 +48,16 @@ class TestTextInput:
         assert body["extracted"]["name"] == "Alice Test"
         assert len(body["extracted"]["tasks"]) >= 1
 
-    @patch("src.services.extraction.get_groq_client")
-    async def test_process_text_returns_400_on_no_name(self, mock_get_client, client):
-        groq = AsyncMock()
-        response = MagicMock()
-        response.choices = [
-            MagicMock(
-                message=MagicMock(
-                    content='{"name": null, "tasks": []}'
-                )
-            )
-        ]
-        groq.chat.completions.create = AsyncMock(return_value=response)
-        mock_get_client.return_value = groq
+    @patch("src.api.web.extract_contact_data")
+    async def test_process_text_returns_400_on_no_name(self, mock_extract, client):
+        """When extraction returns no name, endpoint should return 400."""
+        mock_extract.return_value = ExtractedContactData(name=None)
 
         resp = await client.post(
             "/api/input/text",
             json={"text": "Some vague text with no clear person."},
         )
-        # Either 400 (extraction returns no name) or 500 (ExtractionError propagates)
-        assert resp.status_code in (400, 500)
+        assert resp.status_code == 400
 
 
 @pytest.mark.asyncio

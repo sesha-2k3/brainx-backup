@@ -85,7 +85,7 @@ class TestMergeOrCreate:
         assert contact.name == "Fresh Person"
 
     async def test_appends_context(self, db, make_contact):
-        await make_contact(
+        original = await make_contact(
             name="Context Person",
             email="ctx@test.com",
             context="Met at dinner",
@@ -98,6 +98,11 @@ class TestMergeOrCreate:
         )
         contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
         assert is_new is False
-        # Context should have both
-        assert "dinner" in contact.context
-        assert "conference" in contact.context
+
+        # merge_or_create returns the original object reference which may be stale.
+        # Re-query to verify the context was actually appended in the DB.
+        from src.db.queries import contacts as contact_queries
+
+        refreshed = await contact_queries.get_contact_by_id(db, contact.id, TENANT_ID)
+        assert "dinner" in refreshed.context
+        assert "conference" in refreshed.context

@@ -143,3 +143,85 @@ def groq_stub():
 # Constants: dummy values for required but irrelevant params
 # ---------------------------------------------------------------------------
 TENANT_ID = "test-tenant"
+
+
+# ---------------------------------------------------------------------------
+# Factory fixtures: create real ORM objects in the fake DB
+# Available to ALL test layers (domain, services, API)
+# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture
+async def make_contact(db):
+    """Factory fixture: creates a contact with sensible defaults."""
+    from src.db.queries import contacts as contact_queries
+
+    async def _make(
+        name="Test Contact",
+        email=None,
+        phone=None,
+        company=None,
+        role=None,
+        category=None,
+        context=None,
+        notes=None,
+    ):
+        return await contact_queries.create_contact(
+            db,
+            name=name,
+            email=email,
+            phone=phone,
+            company=company,
+            role=role,
+            category=category,
+            context=context,
+            notes=notes,
+            tenant_id=TENANT_ID,
+        )
+
+    return _make
+
+
+@pytest_asyncio.fixture
+async def make_interaction(db):
+    """Factory fixture: creates an interaction for a contact."""
+    from datetime import datetime, timezone
+    from src.db.queries import interactions as interaction_queries
+
+    async def _make(
+        contact_id,
+        summary="Test interaction",
+        interaction_type="note",
+        occurred_at=None,
+    ):
+        return await interaction_queries.create_interaction(
+            db,
+            contact_id=contact_id,
+            interaction_type=interaction_type,
+            summary=summary,
+            occurred_at=occurred_at or datetime.now(timezone.utc),
+            tenant_id=TENANT_ID,
+        )
+
+    return _make
+
+
+@pytest_asyncio.fixture
+async def make_task(db):
+    """Factory fixture: creates a task."""
+    from src.db.queries import tasks as task_queries
+
+    async def _make(
+        title="Test task",
+        contact_id=None,
+        due_date=None,
+        description=None,
+    ):
+        return await task_queries.create_task(
+            db,
+            title=title,
+            contact_id=contact_id,
+            due_date=due_date,
+            description=description,
+            tenant_id=TENANT_ID,
+        )
+
+    return _make
