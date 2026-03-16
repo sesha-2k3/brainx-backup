@@ -16,7 +16,7 @@ import pytest
 
 @pytest.mark.asyncio
 class TestSearchEndpoint:
-    @patch("src.api.web.semantic_search_with_explanation", new_callable=AsyncMock)
+    @patch("src.services.semantic_search.semantic_search_with_explanation", new_callable=AsyncMock)
     async def test_search_returns_matches(self, mock_search, client, db, make_contact):
         await make_contact(name="Searchable Alice", company="AliceCorp")
 

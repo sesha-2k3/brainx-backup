@@ -91,8 +91,10 @@ class TestMergeOrCreate:
         contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
         assert is_new is False
 
-        # merge_or_create returns the original object reference which may be stale.
-        # Re-query to verify the context was actually appended in the DB.
+        # SQLAlchemy's identity map caches the stale object.
+        # Expire it so the next access re-reads from the DB.
+        await db.expire_all()
+
         from src.db.queries import contacts as contact_queries
 
         refreshed = await contact_queries.get_contact_by_id(db, contact.id, TENANT_ID)
