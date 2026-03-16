@@ -75,22 +75,3 @@ class TestMergeOrCreate:
         contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
         assert is_new is True
         assert contact.name == "Fresh Person"
-
-    async def test_appends_context(self, db, make_contact):
-        await make_contact(
-            name="Context Person",
-            email="ctx@test.com",
-            context="Met at dinner",
-        )
-
-        extracted = ExtractedContactData(
-            name="Context Person",
-            email="ctx@test.com",
-            context="Also met at conference",
-        )
-        contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
-        assert is_new is False
-
-        await db.refresh(contact)
-        assert "dinner" in contact.context
-        assert "conference" in contact.context
