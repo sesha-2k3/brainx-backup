@@ -93,7 +93,7 @@ class TestMergeOrCreate:
 
         # SQLAlchemy's identity map caches the stale object.
         # Expire it so the next access re-reads from the DB.
-        await db.expire_all()
+        db.expire_all()
 
         from src.db.queries import contacts as contact_queries
 
