@@ -9,13 +9,22 @@ from src.config import get_settings
 
 settings = get_settings()
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.is_development,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
+_engine_kwargs: dict = {
+    "echo": settings.is_development,
+}
+
+# Pool settings only apply to connection-based databases (PostgreSQL, MySQL),
+# not to SQLite which uses StaticPool
+if not settings.database_url.startswith("sqlite"):
+    _engine_kwargs.update(
+        {
+            "pool_pre_ping": True,
+            "pool_size": 5,
+            "max_overflow": 10,
+        }
+    )
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 async_session_factory = async_sessionmaker(
     engine,
