@@ -1,7 +1,7 @@
 # Schemas: Pydantic models for tasks and reminders
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel
 
 from src.db.models import TaskStatus
@@ -9,35 +9,38 @@ from src.db.models import TaskStatus
 
 class TaskCreate(BaseModel):
     """Fields for creating a task."""
+
     title: str
-    contact_id: Optional[str] = None
-    description: Optional[str] = None
-    due_date: Optional[datetime] = None
-    reminder_at: Optional[datetime] = None
+    contact_id: str | None = None
+    description: str | None = None
+    due_date: datetime | None = None
+    reminder_at: datetime | None = None
 
 
 class TaskUpdate(BaseModel):
     """Fields for updating a task."""
-    title: Optional[str] = None
-    description: Optional[str] = None
-    due_date: Optional[str] = None  # str to support relative dates like "tomorrow"
-    contact_id: Optional[str] = None
-    reminder_at: Optional[datetime] = None
+
+    title: str | None = None
+    description: str | None = None
+    due_date: str | None = None  # str to support relative dates like "tomorrow"
+    contact_id: str | None = None
+    reminder_at: datetime | None = None
 
 
 class TaskResponse(BaseModel):
     """Task response with all fields."""
+
     id: str
     tenant_id: str
-    contact_id: Optional[str] = None
+    contact_id: str | None = None
     title: str
-    description: Optional[str] = None
-    due_date: Optional[datetime] = None
-    reminder_at: Optional[datetime] = None
+    description: str | None = None
+    due_date: datetime | None = None
+    reminder_at: datetime | None = None
     reminder_sent: bool
     status: TaskStatus
     created_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -45,10 +48,11 @@ class TaskResponse(BaseModel):
 
 class TaskSummary(BaseModel):
     """Minimal task info for lists and digests."""
+
     id: str
     title: str
-    due_date: Optional[datetime] = None
-    contact_name: Optional[str] = None
+    due_date: datetime | None = None
+    contact_name: str | None = None
     status: TaskStatus
 
     class Config:

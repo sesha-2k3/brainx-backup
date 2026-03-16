@@ -10,8 +10,6 @@ Implementation can change freely; these tests won't break.
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from src.utils.dates import format_relative_date, parse_relative_date
 
 
@@ -116,8 +114,13 @@ class TestFormatRelativeDate:
         result = format_relative_date(in_3_days)
         # Should be a day name like "Wednesday"
         assert result in [
-            "Monday", "Tuesday", "Wednesday", "Thursday",
-            "Friday", "Saturday", "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
         ]
 
     def test_past_date_shows_days_ago(self):

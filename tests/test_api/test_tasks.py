@@ -12,16 +12,16 @@ Behaviors:
 
 import pytest
 
-from tests.conftest import TENANT_ID
-
 
 @pytest.mark.asyncio
 class TestCreateTask:
-
     async def test_create_basic(self, client):
-        resp = await client.post("/api/tasks", json={
-            "title": "API Task",
-        })
+        resp = await client.post(
+            "/api/tasks",
+            json={
+                "title": "API Task",
+            },
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["task"]["title"] == "API Task"
@@ -29,22 +29,27 @@ class TestCreateTask:
 
     async def test_create_with_contact(self, client, db, make_contact):
         contact = await make_contact(name="Task Owner")
-        resp = await client.post("/api/tasks", json={
-            "title": "Call back",
-            "contact_id": contact.id,
-        })
+        resp = await client.post(
+            "/api/tasks",
+            json={
+                "title": "Call back",
+                "contact_id": contact.id,
+            },
+        )
         assert resp.status_code == 200
 
     async def test_create_missing_title_fails(self, client):
-        resp = await client.post("/api/tasks", json={
-            "description": "No title provided",
-        })
+        resp = await client.post(
+            "/api/tasks",
+            json={
+                "description": "No title provided",
+            },
+        )
         assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
 class TestListTasks:
-
     async def test_list_returns_array(self, client, db, make_task):
         await make_task(title="Visible Task")
         resp = await client.get("/api/tasks")
@@ -64,7 +69,6 @@ class TestListTasks:
 
 @pytest.mark.asyncio
 class TestUpdateTask:
-
     async def test_update_title(self, client, db, make_task):
         task = await make_task(title="Old Title")
         resp = await client.patch(
@@ -100,7 +104,6 @@ class TestUpdateTask:
 
 @pytest.mark.asyncio
 class TestCompleteTask:
-
     async def test_complete(self, client, db, make_task):
         task = await make_task(title="Complete Me")
         resp = await client.post(f"/api/tasks/{task.id}/complete")
@@ -114,7 +117,6 @@ class TestCompleteTask:
 
 @pytest.mark.asyncio
 class TestDeleteTask:
-
     async def test_delete(self, client, db, make_task):
         task = await make_task(title="Delete Me")
         resp = await client.delete(f"/api/tasks/{task.id}")

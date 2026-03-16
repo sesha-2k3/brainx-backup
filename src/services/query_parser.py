@@ -19,14 +19,14 @@ Functions:
 - `interaction_search` — "What did we discuss with BCBS?"
 - `fts_search` — Fallback for general queries
 
-Future use: Wire into `/api/search` endpoint to route queries to specialized handlers instead of always using semantic search. 
-            Would reduce LLM costs and improve response times for simple queries like "tasks due today" 
+Future use: Wire into `/api/search` endpoint to route queries to specialized handlers instead of always using semantic search.
+            Would reduce LLM costs and improve response times for simple queries like "tasks due today"
             (no need to load all contacts and call LLM).
 """
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from src.config import get_settings
 from src.services.groq_client import get_groq_client
@@ -72,12 +72,12 @@ async def parse_query(query: str) -> dict:
     Parse a natural language query into structured search parameters.
     """
     logger.info(f"Parsing query: {query}")
-    
+
     settings = get_settings()
     client = get_groq_client()
-    
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+
     response = await client.chat.completions.create(
         model=settings.groq_llm_model,
         messages=[
@@ -86,55 +86,52 @@ async def parse_query(query: str) -> dict:
         temperature=0.1,
         max_tokens=200,
     )
-    
+
     content = response.choices[0].message.content.strip()
-    
+
     try:
         # Handle markdown code blocks
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
                 content = content[4:]
-        
+
         parsed = json.loads(content)
-        
+
         # Resolve relative dates
         parsed["filters"] = _resolve_dates(parsed.get("filters", {}))
-        
+
         logger.info(f"Parsed intent: {parsed.get('intent')}, filters: {parsed.get('filters')}")
         return parsed
-    
+
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse query response: {e}")
         # Fall back to FTS search
-        return {
-            "intent": "fts_search",
-            "filters": {"query_text": query}
-        }
+        return {"intent": "fts_search", "filters": {"query_text": query}}
 
 
 def _resolve_dates(filters: dict) -> dict:
     """
     Resolve relative date strings to actual dates.
     """
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
     # Handle date_range
     if "date_range" in filters:
         date_range = filters["date_range"]
-        
+
         if date_range.get("start") == "30_days_ago":
             date_range["start"] = (today - timedelta(days=30)).isoformat()
         elif date_range.get("start") == "7_days_ago":
             date_range["start"] = (today - timedelta(days=7)).isoformat()
         elif date_range.get("start") == "this_month":
             date_range["start"] = today.replace(day=1).isoformat()
-        
+
         if date_range.get("end") == "today":
             date_range["end"] = today.isoformat()
-        
+
         filters["date_range"] = date_range
-    
+
     # Handle due_date for tasks
     if "due_date" in filters:
         due = filters["due_date"]
@@ -147,7 +144,7 @@ def _resolve_dates(filters: dict) -> dict:
         elif due == "overdue":
             filters["due_by"] = today.isoformat()
             filters["overdue"] = True
-    
+
     return filters
 
 
@@ -158,9 +155,9 @@ async def format_search_results(results: dict, query: str) -> str:
     contacts = results.get("contacts", [])
     interactions = results.get("interactions", [])
     tasks = results.get("tasks", [])
-    
+
     parts = []
-    
+
     if contacts:
         parts.append(f"Found {len(contacts)} contact(s):")
         for c in contacts[:5]:
@@ -170,20 +167,20 @@ async def format_search_results(results: dict, query: str) -> str:
             if c.category:
                 line += f" [{c.category}]"
             parts.append(line)
-    
+
     if interactions:
         parts.append(f"\nFound {len(interactions)} interaction(s):")
         for i in interactions[:5]:
             date_str = i.occurred_at.strftime("%Y-%m-%d")
             parts.append(f"- {date_str}: {i.summary[:100]}")
-    
+
     if tasks:
         parts.append(f"\nFound {len(tasks)} task(s):")
         for t in tasks[:5]:
             due = t.due_date.strftime("%Y-%m-%d") if t.due_date else "No due date"
             parts.append(f"- {t.title} (Due: {due})")
-    
+
     if not any([contacts, interactions, tasks]):
         parts.append(f"No results found for: {query}")
-    
+
     return "\n".join(parts)

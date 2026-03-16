@@ -18,7 +18,6 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestProposalCreation:
-
     async def test_create_pending(self, db):
         proposal = await proposal_queries.create_proposal(
             db,
@@ -45,7 +44,6 @@ class TestProposalCreation:
 
 @pytest.mark.asyncio
 class TestProposalConfirmation:
-
     async def test_confirm_transitions_state(self, db, make_contact):
         contact = await make_contact(name="Confirmed Contact")
         proposal = await proposal_queries.create_proposal(
@@ -56,23 +54,18 @@ class TestProposalConfirmation:
             tenant_id=TENANT_ID,
         )
 
-        confirmed = await proposal_queries.confirm_proposal(
-            db, proposal.id, contact_id=contact.id
-        )
+        confirmed = await proposal_queries.confirm_proposal(db, proposal.id, contact_id=contact.id)
         assert confirmed.status == ProposalStatus.CONFIRMED
         assert confirmed.contact_id == contact.id
         assert confirmed.resolved_at is not None
 
     async def test_confirm_nonexistent_returns_none(self, db):
-        result = await proposal_queries.confirm_proposal(
-            db, "fake-id", contact_id="whatever"
-        )
+        result = await proposal_queries.confirm_proposal(db, "fake-id", contact_id="whatever")
         assert result is None
 
 
 @pytest.mark.asyncio
 class TestProposalRejection:
-
     async def test_reject_marks_resolved(self, db):
         proposal = await proposal_queries.create_proposal(
             db,
@@ -93,7 +86,6 @@ class TestProposalRejection:
 
 @pytest.mark.asyncio
 class TestProposalEdit:
-
     async def test_update_extracted_data(self, db):
         proposal = await proposal_queries.create_proposal(
             db,
@@ -103,16 +95,13 @@ class TestProposalEdit:
             tenant_id=TENANT_ID,
         )
 
-        updated = await proposal_queries.update_proposal_data(
-            db, proposal.id, {"name": "Edited"}
-        )
+        updated = await proposal_queries.update_proposal_data(db, proposal.id, {"name": "Edited"})
         assert updated.extracted_data["name"] == "Edited"
         assert updated.status == ProposalStatus.EDITED
 
 
 @pytest.mark.asyncio
 class TestPendingProposals:
-
     async def test_get_pending_for_user(self, db):
         await proposal_queries.create_proposal(
             db,

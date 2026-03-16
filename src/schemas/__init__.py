@@ -1,50 +1,46 @@
 # Pydantic schemas package
 from src.schemas.contacts import (
     ContactCreate,
-    ContactUpdate,
     ContactResponse,
     ContactSummary,
+    ContactUpdate,
     ExtractedContactData,
     ExtractedTask,
 )
+from src.schemas.interactions import (
+    InteractionCreate,
+    InteractionResponse,
+    InteractionSummary,
+    InteractionUpdate,
+)
 from src.schemas.proposals import (
-    ProposalResponse,
     ConfirmationCard,
     EditRequest,
+    ProposalResponse,
 )
 from src.schemas.tasks import (
     TaskCreate,
-    TaskUpdate,
     TaskResponse,
     TaskSummary,
-)
-from src.schemas.interactions import (
-    InteractionCreate,
-    InteractionUpdate,
-    InteractionResponse,
-    InteractionSummary,
+    TaskUpdate,
 )
 
 __all__ = [
-    # Contacts
+    "ConfirmationCard",
     "ContactCreate",
-    "ContactUpdate",
     "ContactResponse",
     "ContactSummary",
+    "ContactUpdate",
+    "EditRequest",
     "ExtractedContactData",
     "ExtractedTask",
-    # Proposals
-    "ProposalResponse",
-    "ConfirmationCard",
-    "EditRequest",
-    # Tasks
-    "TaskCreate",
-    "TaskUpdate",
-    "TaskResponse",
-    "TaskSummary",
-    # Interactions
     "InteractionCreate",
-    "InteractionUpdate",
     "InteractionResponse",
     "InteractionSummary",
+    "InteractionUpdate",
+    "ProposalResponse",
+    "TaskCreate",
+    "TaskResponse",
+    "TaskSummary",
+    "TaskUpdate",
 ]

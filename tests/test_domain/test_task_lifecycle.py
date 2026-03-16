@@ -10,7 +10,7 @@ Behaviors:
   - "reminder tracking works correctly"
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -21,7 +21,6 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestTaskCreation:
-
     async def test_create_pending(self, db, make_task):
         task = await make_task(title="Send invoice")
         assert task.status == TaskStatus.PENDING
@@ -33,14 +32,13 @@ class TestTaskCreation:
         assert task.contact_id == contact.id
 
     async def test_create_with_due_date(self, db, make_task):
-        due = datetime(2025, 12, 31, tzinfo=timezone.utc)
+        due = datetime(2025, 12, 31, tzinfo=UTC)
         task = await make_task(title="Year end review", due_date=due)
         assert task.due_date == due
 
 
 @pytest.mark.asyncio
 class TestTaskCompletion:
-
     async def test_complete_sets_status_and_timestamp(self, db, make_task):
         task = await make_task(title="Finish report")
         completed = await task_queries.complete_task(db, task.id, TENANT_ID)
@@ -55,7 +53,6 @@ class TestTaskCompletion:
 
 @pytest.mark.asyncio
 class TestTaskCancellation:
-
     async def test_cancel_changes_status(self, db, make_task):
         task = await make_task(title="Cancelled task")
         cancelled = await task_queries.cancel_task(db, task.id, TENANT_ID)
@@ -68,9 +65,8 @@ class TestTaskCancellation:
 
 @pytest.mark.asyncio
 class TestTaskListing:
-
     async def test_list_pending_only(self, db, make_task):
-        t1 = await make_task(title="Active")
+        await make_task(title="Active")
         t2 = await make_task(title="Done")
         await task_queries.complete_task(db, t2.id, TENANT_ID)
 
@@ -91,15 +87,14 @@ class TestTaskListing:
 
 @pytest.mark.asyncio
 class TestTasksDueBy:
-
     async def test_finds_overdue_tasks(self, db, make_task):
-        past = datetime.now(timezone.utc) - timedelta(days=1)
-        future = datetime.now(timezone.utc) + timedelta(days=7)
+        past = datetime.now(UTC) - timedelta(days=1)
+        future = datetime.now(UTC) + timedelta(days=7)
 
         await make_task(title="Overdue", due_date=past)
         await make_task(title="Future", due_date=future)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         due = await task_queries.list_tasks_due_by(db, now, TENANT_ID)
         titles = [t.title for t in due]
         assert "Overdue" in titles
@@ -108,9 +103,8 @@ class TestTasksDueBy:
 
 @pytest.mark.asyncio
 class TestTaskReminders:
-
     async def test_due_reminders_found(self, db):
-        past_reminder = datetime.now(timezone.utc) - timedelta(hours=1)
+        past_reminder = datetime.now(UTC) - timedelta(hours=1)
         task = await task_queries.create_task(
             db,
             title="Remind me",
@@ -118,7 +112,7 @@ class TestTaskReminders:
             tenant_id=TENANT_ID,
         )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         reminders = await task_queries.get_due_reminders(db, now, TENANT_ID)
         assert any(t.id == task.id for t in reminders)
 
@@ -126,7 +120,7 @@ class TestTaskReminders:
         task = await task_queries.create_task(
             db,
             title="Sent reminder",
-            reminder_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            reminder_at=datetime.now(UTC) - timedelta(hours=1),
             tenant_id=TENANT_ID,
         )
 
@@ -136,16 +130,11 @@ class TestTaskReminders:
 
 @pytest.mark.asyncio
 class TestTaskUpdate:
-
     async def test_update_title(self, db, make_task):
         task = await make_task(title="Old title")
-        updated = await task_queries.update_task(
-            db, task.id, TENANT_ID, title="New title"
-        )
+        updated = await task_queries.update_task(db, task.id, TENANT_ID, title="New title")
         assert updated.title == "New title"
 
     async def test_update_nonexistent_returns_none(self, db):
-        result = await task_queries.update_task(
-            db, "nope", TENANT_ID, title="Ghost"
-        )
+        result = await task_queries.update_task(db, "nope", TENANT_ID, title="Ghost")
         assert result is None

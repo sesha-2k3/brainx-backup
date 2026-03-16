@@ -11,15 +11,15 @@ from src.db.models import (
 
 __all__ = [
     "Base",
-    "engine",
-    "async_session_factory",
-    "get_db",
-    "init_db",
-    "close_db",
     "Contact",
     "Interaction",
     "Proposal",
-    "Task",
     "ProposalStatus",
+    "Task",
     "TaskStatus",
+    "async_session_factory",
+    "close_db",
+    "engine",
+    "get_db",
+    "init_db",
 ]

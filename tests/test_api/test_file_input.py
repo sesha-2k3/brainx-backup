@@ -14,8 +14,7 @@ Behaviors:
   - "POST /api/input/file rejects oversized files"
 """
 
-from io import BytesIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -24,12 +23,9 @@ from src.schemas.contacts import ExtractedContactData
 
 @pytest.mark.asyncio
 class TestFileInputAudio:
-
     @patch("src.api.web.extract_contact_data")
     @patch("src.api.web.transcribe_audio_bytes")
-    async def test_audio_upload_creates_proposal(
-        self, mock_transcribe, mock_extract, client
-    ):
+    async def test_audio_upload_creates_proposal(self, mock_transcribe, mock_extract, client):
         mock_transcribe.return_value = {
             "text": "Met Sarah from BigCorp, she is the VP of Sales",
             "duration": 10.0,
@@ -55,9 +51,7 @@ class TestFileInputAudio:
 
     @patch("src.api.web.extract_contact_data")
     @patch("src.api.web.transcribe_audio_bytes")
-    async def test_audio_no_name_returns_400(
-        self, mock_transcribe, mock_extract, client
-    ):
+    async def test_audio_no_name_returns_400(self, mock_transcribe, mock_extract, client):
         mock_transcribe.return_value = {"text": "some noise", "duration": 2.0}
         mock_extract.return_value = ExtractedContactData(name=None)
 
@@ -70,12 +64,9 @@ class TestFileInputAudio:
 
 @pytest.mark.asyncio
 class TestFileInputImage:
-
     @patch("src.api.web.find_duplicate")
     @patch("src.api.web.process_business_card_bytes")
-    async def test_image_upload_creates_proposal(
-        self, mock_ocr, mock_dedup, client
-    ):
+    async def test_image_upload_creates_proposal(self, mock_ocr, mock_dedup, client):
         mock_ocr.return_value = {
             "raw_text": "Jane Doe\njane@example.com",
             "confidence": 0.92,
@@ -113,7 +104,6 @@ class TestFileInputImage:
 
 @pytest.mark.asyncio
 class TestFileInputValidation:
-
     async def test_unsupported_content_type_rejected(self, client):
         resp = await client.post(
             "/api/input/file",

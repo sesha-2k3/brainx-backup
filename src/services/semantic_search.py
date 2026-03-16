@@ -1,4 +1,4 @@
-""" Semantic search using LLM to find relevant contacts. """
+"""Semantic search using LLM to find relevant contacts."""
 
 import json
 import logging
@@ -19,40 +19,37 @@ MAX_CONTACTS_FOR_SEARCH = 50
 def _parse_llm_json(content: str) -> Any:
     """Parse JSON from LLM response, handling markdown code blocks."""
     content = content.strip()
-    
+
     if content.startswith("```"):
         lines = content.split("\n")
         # Remove first line (```json) and last line (```)
-        if lines[-1].strip() == "```":
-            content = "\n".join(lines[1:-1])
-        else:
-            content = "\n".join(lines[1:])
-    
+        content = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+
     return json.loads(content)
 
 
 def _build_contact_context(contacts: list[dict]) -> str:
     """Build formatted context string from contacts for LLM."""
     context_parts = []
-    
+
     for i, c in enumerate(contacts[:MAX_CONTACTS_FOR_SEARCH]):
-        parts = [f"#{i+1} {c.get('name', 'Unknown')}"]
-        
-        if c.get('company'):
+        parts = [f"#{i + 1} {c.get('name', 'Unknown')}"]
+
+        if c.get("company"):
             parts.append(f"({c['company']})")
-        if c.get('role'):
+        if c.get("role"):
             parts.append(f"[{c['role']}]")
-        if c.get('category'):
+        if c.get("category"):
             parts.append(f"<{c['category']}>")
-        if c.get('notes'):
+        if c.get("notes"):
             parts.append(f"Notes: {c['notes'][:MAX_NOTES_LENGTH]}")
-        if c.get('context'):
+        if c.get("context"):
             parts.append(f"Context: {c['context'][:MAX_CONTEXT_LENGTH]}")
-        if c.get('interactions'):
+        if c.get("interactions"):
             parts.append(f"Interactions: {c['interactions'][:MAX_INTERACTIONS_LENGTH]}")
-        
+
         context_parts.append(" | ".join(parts))
-    
+
     return "\n".join(context_parts)
 
 
@@ -80,32 +77,29 @@ Respond with JSON only:
 JSON:"""
 
 
-async def semantic_search_with_explanation(
-    query: str, 
-    contacts: list[dict]
-) -> dict:
+async def semantic_search_with_explanation(query: str, contacts: list[dict]) -> dict:
     """
     Semantic search that returns only highly relevant matches.
-    
+
     Args:
         query: Natural language search query
         contacts: List of contact dictionaries to search through
-        
+
     Returns:
         Dict with 'matches' (list of matching contacts) and 'explanation' (str)
     """
     if not contacts:
         return {"matches": [], "explanation": "No contacts in database."}
-    
+
     if not query.strip():
         return {"matches": [], "explanation": "Empty search query."}
-    
+
     context = _build_contact_context(contacts)
     prompt = SEARCH_PROMPT.format(context=context, query=query)
-    
+
     settings = get_settings()
     client = get_groq_client()
-    
+
     try:
         response = await client.chat.completions.create(
             model=settings.groq_llm_model,
@@ -113,14 +107,14 @@ async def semantic_search_with_explanation(
             temperature=0,
             max_tokens=300,
         )
-        
+
         content = response.choices[0].message.content.strip()
         logger.info(f"Search query: {query}")
         logger.debug(f"LLM response: {content}")
-        
+
         # Parse JSON (handles both raw JSON and markdown-wrapped)
         result = _parse_llm_json(content)
-        
+
         # Convert 1-based indices to actual contacts
         matches = []
         for idx in result.get("matches", []):
@@ -129,16 +123,16 @@ async def semantic_search_with_explanation(
                 matches.append(contacts[actual_idx])
             else:
                 logger.warning(f"Invalid contact index from LLM: {idx}")
-        
+
         return {
             "matches": matches,
             "explanation": result.get("explanation", ""),
         }
-        
+
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM response as JSON: {e}")
         return {"matches": [], "explanation": "Failed to parse search results."}
-    
+
     except Exception as e:
         logger.error(f"Semantic search error: {e}", exc_info=True)
         return {"matches": [], "explanation": "Search failed."}

@@ -15,19 +15,18 @@ Behaviors:
 
 import pytest
 
-from src.db.queries import contacts as contact_queries
-from tests.conftest import TENANT_ID
-
 
 @pytest.mark.asyncio
 class TestCreateContact:
-
     async def test_create_returns_success(self, client):
-        resp = await client.post("/api/contacts", json={
-            "name": "API Alice",
-            "email": "api-alice@example.com",
-            "company": "APICorp",
-        })
+        resp = await client.post(
+            "/api/contacts",
+            json={
+                "name": "API Alice",
+                "email": "api-alice@example.com",
+                "company": "APICorp",
+            },
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -45,7 +44,6 @@ class TestCreateContact:
 
 @pytest.mark.asyncio
 class TestListContacts:
-
     async def test_list_returns_array(self, client, db, make_contact):
         await make_contact(name="Listed Person")
         resp = await client.get("/api/contacts")
@@ -72,7 +70,6 @@ class TestListContacts:
 
 @pytest.mark.asyncio
 class TestGetContact:
-
     async def test_get_existing(self, client, db, make_contact):
         contact = await make_contact(name="Detail Person", company="DetailCo")
         resp = await client.get(f"/api/contacts/{contact.id}")
@@ -88,7 +85,6 @@ class TestGetContact:
 
 @pytest.mark.asyncio
 class TestUpdateContact:
-
     async def test_update_fields(self, client, db, make_contact):
         contact = await make_contact(name="Update Me")
         resp = await client.patch(
@@ -110,7 +106,6 @@ class TestUpdateContact:
 
 @pytest.mark.asyncio
 class TestDeleteContact:
-
     async def test_delete_existing(self, client, db, make_contact):
         contact = await make_contact(name="Delete Me")
         resp = await client.delete(f"/api/contacts/{contact.id}")
@@ -124,12 +119,9 @@ class TestDeleteContact:
 
 @pytest.mark.asyncio
 class TestContactReminders:
-
     async def test_set_reminder(self, client, db, make_contact):
         contact = await make_contact(name="Reminder Person")
-        resp = await client.post(
-            f"/api/contacts/{contact.id}/set-reminder?frequency=weekly"
-        )
+        resp = await client.post(f"/api/contacts/{contact.id}/set-reminder?frequency=weekly")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -139,21 +131,15 @@ class TestContactReminders:
     async def test_clear_reminder(self, client, db, make_contact):
         contact = await make_contact(name="Clear Reminder")
         # Set first
-        await client.post(
-            f"/api/contacts/{contact.id}/set-reminder?frequency=weekly"
-        )
+        await client.post(f"/api/contacts/{contact.id}/set-reminder?frequency=weekly")
         # Then clear
-        resp = await client.post(
-            f"/api/contacts/{contact.id}/set-reminder?frequency=none"
-        )
+        resp = await client.post(f"/api/contacts/{contact.id}/set-reminder?frequency=none")
         assert resp.status_code == 200
         assert resp.json()["reminder_frequency"] is None
 
     async def test_invalid_frequency_rejected(self, client, db, make_contact):
         contact = await make_contact(name="Bad Frequency")
-        resp = await client.post(
-            f"/api/contacts/{contact.id}/set-reminder?frequency=invalid"
-        )
+        resp = await client.post(f"/api/contacts/{contact.id}/set-reminder?frequency=invalid")
         assert resp.status_code == 422
 
     async def test_mark_contacted(self, client, db, make_contact):
@@ -163,7 +149,5 @@ class TestContactReminders:
         assert resp.json()["success"] is True
 
     async def test_set_reminder_nonexistent_returns_404(self, client):
-        resp = await client.post(
-            "/api/contacts/fake-id/set-reminder?frequency=weekly"
-        )
+        resp = await client.post("/api/contacts/fake-id/set-reminder?frequency=weekly")
         assert resp.status_code == 404

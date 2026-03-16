@@ -33,7 +33,6 @@ def _make_groq_response(json_str: str):
 
 @pytest.mark.asyncio
 class TestExtractContactData:
-
     @patch("src.services.extraction.get_groq_client")
     async def test_parses_valid_json(self, mock_get_client):
         client = AsyncMock()
@@ -95,13 +94,10 @@ class TestExtractContactData:
 
 @pytest.mark.asyncio
 class TestExtractContactDataSafe:
-
     @patch("src.services.extraction.get_groq_client")
     async def test_returns_empty_on_failure(self, mock_get_client):
         client = AsyncMock()
-        client.chat.completions.create = AsyncMock(
-            return_value=_make_groq_response("garbage")
-        )
+        client.chat.completions.create = AsyncMock(return_value=_make_groq_response("garbage"))
         mock_get_client.return_value = client
 
         result = await extract_contact_data_safe("Some text")
@@ -122,9 +118,7 @@ class TestSemanticSearch:
 
         client = AsyncMock()
         client.chat.completions.create = AsyncMock(
-            return_value=_make_groq_response(
-                '{"matches": [1], "explanation": "Name match"}'
-            )
+            return_value=_make_groq_response('{"matches": [1], "explanation": "Name match"}')
         )
         mock_get_client.return_value = client
 
@@ -155,12 +149,8 @@ class TestSemanticSearch:
         from src.services.semantic_search import semantic_search_with_explanation
 
         client = AsyncMock()
-        client.chat.completions.create = AsyncMock(
-            return_value=_make_groq_response("not json")
-        )
+        client.chat.completions.create = AsyncMock(return_value=_make_groq_response("not json"))
         mock_get_client.return_value = client
 
-        result = await semantic_search_with_explanation(
-            "test", [{"name": "X"}]
-        )
+        result = await semantic_search_with_explanation("test", [{"name": "X"}])
         assert result["matches"] == []

@@ -12,7 +12,7 @@ Behaviors:
   - "regex fallback fills in fields LLM missed"
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -24,7 +24,6 @@ from src.services.ocr import _quick_extract
 # Pure logic: _quick_extract regex (zero doubles)
 # ---------------------------------------------------------------------------
 class TestQuickExtract:
-
     def test_extracts_email(self):
         text = "Jane Doe\njane@example.com\nAcme Corp"
         result = _quick_extract(text)
@@ -61,7 +60,6 @@ class TestQuickExtract:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 class TestProcessBusinessCardBytes:
-
     @patch("src.services.ocr.extract_contact_data")
     @patch("src.services.ocr._run_ocr_sync")
     async def test_returns_extracted_data(self, mock_ocr_sync, mock_extract):
@@ -134,7 +132,6 @@ class TestProcessBusinessCardBytes:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 class TestProcessBusinessCardFile:
-
     async def test_missing_file_raises(self):
         from src.services.ocr import process_business_card
 

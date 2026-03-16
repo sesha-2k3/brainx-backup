@@ -1,7 +1,7 @@
 # Queries: Contact CRUD and lookup operations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,14 +13,14 @@ async def create_contact(
     db: AsyncSession,
     *,
     name: str,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
-    company: Optional[str] = None,
-    role: Optional[str] = None,
-    category: Optional[str] = None,
-    tags: Optional[list[str]] = None,
-    notes: Optional[str] = None,
-    context: Optional[str] = None,
+    email: str | None = None,
+    phone: str | None = None,
+    company: str | None = None,
+    role: str | None = None,
+    category: str | None = None,
+    tags: list[str] | None = None,
+    notes: str | None = None,
+    context: str | None = None,
     tenant_id: str = "default",
 ) -> Contact:
     contact = Contact(
@@ -46,7 +46,7 @@ async def get_contact_by_id(
     db: AsyncSession,
     contact_id: str,
     tenant_id: str = "default",
-) -> Optional[Contact]:
+) -> Contact | None:
     """Get a contact by ID, scoped to tenant."""
     result = await db.execute(
         select(Contact).where(
@@ -61,7 +61,7 @@ async def get_contact_by_email(
     db: AsyncSession,
     email: str,
     tenant_id: str = "default",
-) -> Optional[Contact]:
+) -> Contact | None:
     result = await db.execute(
         select(Contact).where(
             Contact.email == email,
@@ -75,7 +75,7 @@ async def get_contact_by_phone(
     db: AsyncSession,
     phone: str,
     tenant_id: str = "default",
-) -> Optional[Contact]:
+) -> Contact | None:
     result = await db.execute(
         select(Contact).where(
             Contact.phone == phone,
@@ -87,20 +87,20 @@ async def get_contact_by_phone(
 
 async def find_duplicate_contact(
     db: AsyncSession,
-    email: Optional[str],
-    phone: Optional[str],
+    email: str | None,
+    phone: str | None,
     tenant_id: str = "default",
-) -> Optional[Contact]:
+) -> Contact | None:
     """Find existing contact by exact email or phone match."""
     if not email and not phone:
         return None
-    
+
     conditions = []
     if email:
         conditions.append(Contact.email == email)
     if phone:
         conditions.append(Contact.phone == phone)
-    
+
     result = await db.execute(
         select(Contact).where(
             Contact.tenant_id == tenant_id,
@@ -115,18 +115,18 @@ async def update_contact(
     contact_id: str,
     tenant_id: str = "default",
     **updates,
-) -> Optional[Contact]:
+) -> Contact | None:
     """Update a contact, scoped to tenant."""
     contact = await get_contact_by_id(db, contact_id, tenant_id)
     if not contact:
         return None
-    
+
     for key, value in updates.items():
         if hasattr(contact, key):
             setattr(contact, key, value)
-    
+
     contact.search_vector = _build_search_vector(contact)
-    contact.updated_at = datetime.now(timezone.utc)
+    contact.updated_at = datetime.now(UTC)
     await db.flush()
     return contact
 
@@ -134,7 +134,7 @@ async def update_contact(
 async def list_contacts(
     db: AsyncSession,
     tenant_id: str = "default",
-    category: Optional[str] = None,
+    category: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Contact]:
@@ -183,7 +183,7 @@ async def get_contacts_due_for_reminder(
     tenant_id: str = "default",
 ) -> list[Contact]:
     """Get contacts whose next_reminder_at is due."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = await db.execute(
         select(Contact)
         .where(
@@ -196,10 +196,10 @@ async def get_contacts_due_for_reminder(
     return list(result.scalars().all())
 
 
-def calculate_next_reminder(frequency: str, from_date: datetime = None) -> datetime:
+def calculate_next_reminder(frequency: str, from_date: datetime | None = None) -> datetime | None:
     """Calculate next reminder date based on frequency."""
-    from_date = from_date or datetime.now(timezone.utc)
-    
+    from_date = from_date or datetime.now(UTC)
+
     if frequency == "every_3_days":
         return from_date + timedelta(days=3)
     elif frequency == "weekly":

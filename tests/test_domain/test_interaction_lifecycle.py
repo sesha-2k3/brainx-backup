@@ -9,7 +9,7 @@ Behaviors:
   - "deleting an interaction removes it permanently"
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -19,37 +19,29 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestInteractionCreation:
-
     async def test_create_and_list(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Alice")
         await make_interaction(contact.id, summary="First meeting")
         await make_interaction(contact.id, summary="Follow-up call")
 
-        results = await interaction_queries.list_interactions_for_contact(
-            db, contact.id
-        )
+        results = await interaction_queries.list_interactions_for_contact(db, contact.id)
         assert len(results) == 2
 
     async def test_search_vector_populated(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Bob")
-        interaction = await make_interaction(
-            contact.id, summary="Discussed AI partnership"
-        )
+        interaction = await make_interaction(contact.id, summary="Discussed AI partnership")
         assert interaction.search_vector is not None
         assert "ai partnership" in interaction.search_vector
 
 
 @pytest.mark.asyncio
 class TestInteractionSearch:
-
     async def test_search_by_summary(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Carol")
         await make_interaction(contact.id, summary="Discussed blockchain strategy")
         await make_interaction(contact.id, summary="Coffee chat about family")
 
-        results = await interaction_queries.search_interactions(
-            db, "blockchain", TENANT_ID
-        )
+        results = await interaction_queries.search_interactions(db, "blockchain", TENANT_ID)
         assert len(results) >= 1
         assert any("blockchain" in r.summary.lower() for r in results)
 
@@ -67,7 +59,6 @@ class TestInteractionSearch:
 
 @pytest.mark.asyncio
 class TestInteractionUpdate:
-
     async def test_update_summary(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Frank")
         interaction = await make_interaction(contact.id, summary="Old summary")
@@ -79,15 +70,12 @@ class TestInteractionUpdate:
         assert "new summary" in updated.search_vector
 
     async def test_update_nonexistent_returns_none(self, db):
-        result = await interaction_queries.update_interaction(
-            db, "fake-id", summary="nope"
-        )
+        result = await interaction_queries.update_interaction(db, "fake-id", summary="nope")
         assert result is None
 
 
 @pytest.mark.asyncio
 class TestInteractionDeletion:
-
     async def test_delete_existing(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Grace")
         interaction = await make_interaction(contact.id, summary="Temp note")
@@ -102,16 +90,14 @@ class TestInteractionDeletion:
 
 @pytest.mark.asyncio
 class TestRecentInteractions:
-
     async def test_list_recent(self, db, make_contact, make_interaction):
         contact = await make_contact(name="Hank")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
+        await make_interaction(contact.id, summary="Recent", occurred_at=now)
         await make_interaction(
-            contact.id, summary="Recent", occurred_at=now
-        )
-        await make_interaction(
-            contact.id, summary="Old",
+            contact.id,
+            summary="Old",
             occurred_at=now - timedelta(days=30),
         )
 

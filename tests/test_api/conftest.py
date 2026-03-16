@@ -12,14 +12,13 @@ FastAPI's dependency_overrides only affects Depends(get_settings) injections —
 it does NOT touch that module-level variable. We must patch it explicitly.
 """
 
-import pytest
+from unittest.mock import patch
+
 import pytest_asyncio
-from unittest.mock import patch, MagicMock
+from httpx import ASGITransport, AsyncClient
 
-from httpx import AsyncClient, ASGITransport
-
+from src.config import Settings, get_settings
 from src.db import get_db
-from src.config import get_settings, Settings
 from tests.conftest import TENANT_ID
 
 

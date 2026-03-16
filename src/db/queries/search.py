@@ -1,7 +1,6 @@
 # Queries: Full-text search and filtered listing queries
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,11 +21,11 @@ async def search_all(
     """
     if not query_text.strip():
         return {"contacts": [], "interactions": []}
-    
+
     # Escape special characters and prepare pattern
     escaped_query = escape_like(query_text.lower())
     pattern = f"%{escaped_query}%"
-    
+
     # Search contacts
     contacts_result = await db.execute(
         select(Contact)
@@ -38,7 +37,7 @@ async def search_all(
         .limit(limit)
     )
     contacts = list(contacts_result.scalars().all())
-    
+
     # Search interactions
     interactions_result = await db.execute(
         select(Interaction)
@@ -50,7 +49,7 @@ async def search_all(
         .limit(limit)
     )
     interactions = list(interactions_result.scalars().all())
-    
+
     return {
         "contacts": contacts,
         "interactions": interactions,
@@ -61,7 +60,7 @@ async def get_contacts_by_category(
     db: AsyncSession,
     category: str,
     tenant_id: str = "default",
-    since: Optional[datetime] = None,
+    since: datetime | None = None,
     limit: int = 50,
 ) -> list[Contact]:
     """Get contacts filtered by category, optionally since a date."""
@@ -80,17 +79,17 @@ async def get_interactions_by_company(
     db: AsyncSession,
     company: str,
     tenant_id: str = "default",
-    since: Optional[datetime] = None,
+    since: datetime | None = None,
     limit: int = 20,
 ) -> list[Interaction]:
     """Get interactions for contacts at a specific company using subquery join."""
     if not company.strip():
         return []
-    
+
     # Escape special characters for LIKE
     escaped_company = escape_like(company)
     pattern = f"%{escaped_company}%"
-    
+
     # Use scalar subquery instead of fetching IDs into Python
     # This lets PostgreSQL optimize as a single query plan
     contact_subq = (
@@ -101,16 +100,16 @@ async def get_interactions_by_company(
         )
         .scalar_subquery()
     )
-    
+
     # Build interactions query using subquery
     query = select(Interaction).where(
         Interaction.tenant_id == tenant_id,
         Interaction.contact_id.in_(contact_subq),
     )
-    
+
     if since:
         query = query.where(Interaction.occurred_at >= since)
-    
+
     query = query.order_by(Interaction.occurred_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
@@ -123,9 +122,9 @@ async def get_recent_activity(
     limit: int = 50,
 ) -> list[Interaction]:
     """Get all interactions from the last N days."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
-    
+
     result = await db.execute(
         select(Interaction)
         .where(
@@ -143,7 +142,7 @@ async def get_contact_with_interactions(
     contact_id: str,
     tenant_id: str = "default",
     interaction_limit: int = 10,
-) -> Optional[dict]:
+) -> dict | None:
     """Get a contact with their recent interactions."""
     # Fetch with tenant_id check to prevent cross-tenant access
     result = await db.execute(
@@ -153,10 +152,10 @@ async def get_contact_with_interactions(
         )
     )
     contact = result.scalar_one_or_none()
-    
+
     if not contact:
         return None
-    
+
     interactions_result = await db.execute(
         select(Interaction)
         .where(
@@ -167,7 +166,7 @@ async def get_contact_with_interactions(
         .limit(interaction_limit)
     )
     interactions = list(interactions_result.scalars().all())
-    
+
     return {
         "contact": contact,
         "interactions": interactions,

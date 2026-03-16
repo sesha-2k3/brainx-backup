@@ -1,4 +1,6 @@
+# ============================================================================
 # BrainX CI/CD Pipeline
+# ============================================================================
 #
 # Stages:
 #   1. lint      → ruff check + ruff format --check (fast fail)
@@ -36,12 +38,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
   # Stage 1: Lint & Format Check
-
+  # ─────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -62,8 +70,9 @@ jobs:
       - name: Check formatting
         run: ruff format --check src/ tests/
 
+  # ─────────────────────────────────────────────────────────────────────────
   # Stage 2: Type Checking
-
+  # ─────────────────────────────────────────────────────────────────────────
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
@@ -89,8 +98,9 @@ jobs:
         run: mypy src/ --ignore-missing-imports --no-error-summary || true
         # NOTE: Start non-blocking (|| true). Remove when types are clean.
 
+  # ─────────────────────────────────────────────────────────────────────────
   # Stage 3: Test with Coverage
-
+  # ─────────────────────────────────────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -128,21 +138,41 @@ jobs:
             --junitxml=junit-results.xml \
             -v
 
-      - name: Upload coverage report
+      # ── Reporting: visible directly in the Actions UI and PR checks ──
+
+      - name: Test results summary
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: junit-results.xml
+          comment_mode: off
+          check_name: Test Results
+
+      - name: Coverage summary on PR
+        if: github.event_name == 'pull_request'
+        uses: orgoro/coverage@v3.2
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          thresholdAll: 50
+
+      - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage.xml
 
-      - name: Upload test results
+      - name: Upload test results artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: junit-results.xml
 
+  # ─────────────────────────────────────────────────────────────────────────
   # Stage 4: Deploy Gate (only on main, after all checks pass)
+  # ─────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy
     runs-on: ubuntu-latest

@@ -13,10 +13,9 @@ Tests behaviors, not implementation details:
   - "reminder calculation returns correct dates"
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-import pytest_asyncio
 
 from src.db.queries import contacts as contact_queries
 from tests.conftest import TENANT_ID
@@ -24,7 +23,6 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestContactCreation:
-
     async def test_create_and_retrieve(self, db, make_contact):
         contact = await make_contact(name="Alice Smith", email="alice@example.com")
 
@@ -34,9 +32,7 @@ class TestContactCreation:
         assert found.email == "alice@example.com"
 
     async def test_search_vector_populated(self, db, make_contact):
-        contact = await make_contact(
-            name="Bob Jones", company="Acme", notes="VIP customer"
-        )
+        contact = await make_contact(name="Bob Jones", company="Acme", notes="VIP customer")
         assert contact.search_vector is not None
         assert "bob jones" in contact.search_vector
         assert "acme" in contact.search_vector
@@ -45,7 +41,6 @@ class TestContactCreation:
 
 @pytest.mark.asyncio
 class TestDuplicateDetection:
-
     async def test_finds_by_email(self, db, make_contact):
         await make_contact(name="Charlie", email="charlie@test.com")
         dup = await contact_queries.find_duplicate_contact(
@@ -78,32 +73,24 @@ class TestDuplicateDetection:
 
 @pytest.mark.asyncio
 class TestContactSearch:
-
     async def test_search_by_name_case_insensitive(self, db, make_contact):
         await make_contact(name="Franklin Gomez")
-        results = await contact_queries.search_contacts_by_name(
-            db, "franklin", TENANT_ID
-        )
+        results = await contact_queries.search_contacts_by_name(db, "franklin", TENANT_ID)
         assert len(results) >= 1
         assert any(c.name == "Franklin Gomez" for c in results)
 
     async def test_search_partial_name(self, db, make_contact):
         await make_contact(name="Greta Van Fleet")
-        results = await contact_queries.search_contacts_by_name(
-            db, "Van", TENANT_ID
-        )
+        results = await contact_queries.search_contacts_by_name(db, "Van", TENANT_ID)
         assert len(results) >= 1
 
     async def test_search_no_results(self, db, make_contact):
-        results = await contact_queries.search_contacts_by_name(
-            db, "ZZZNONEXISTENT", TENANT_ID
-        )
+        results = await contact_queries.search_contacts_by_name(db, "ZZZNONEXISTENT", TENANT_ID)
         assert results == []
 
 
 @pytest.mark.asyncio
 class TestContactUpdate:
-
     async def test_update_fields(self, db, make_contact):
         contact = await make_contact(name="Harry", company="OldCorp")
         updated = await contact_queries.update_contact(
@@ -114,29 +101,22 @@ class TestContactUpdate:
 
     async def test_update_refreshes_search_vector(self, db, make_contact):
         contact = await make_contact(name="Ivy")
-        await contact_queries.update_contact(
-            db, contact.id, TENANT_ID, company="SecretCo"
-        )
+        await contact_queries.update_contact(db, contact.id, TENANT_ID, company="SecretCo")
         refreshed = await contact_queries.get_contact_by_id(db, contact.id, TENANT_ID)
         assert "secretco" in refreshed.search_vector
 
     async def test_update_nonexistent_returns_none(self, db):
-        result = await contact_queries.update_contact(
-            db, "nonexistent-id", TENANT_ID, name="Ghost"
-        )
+        result = await contact_queries.update_contact(db, "nonexistent-id", TENANT_ID, name="Ghost")
         assert result is None
 
 
 @pytest.mark.asyncio
 class TestContactListing:
-
     async def test_list_respects_category_filter(self, db, make_contact):
         await make_contact(name="Investor Joe", category="investor")
         await make_contact(name="Client Jane", category="client")
 
-        investors = await contact_queries.list_contacts(
-            db, TENANT_ID, category="investor"
-        )
+        investors = await contact_queries.list_contacts(db, TENANT_ID, category="investor")
         assert all(c.category == "investor" for c in investors)
 
     async def test_list_respects_limit(self, db, make_contact):
@@ -151,22 +131,22 @@ class TestReminderCalculation:
     """Pure logic — no DB, no async. Tests reminder date math."""
 
     def test_weekly(self):
-        from_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        from_date = datetime(2025, 1, 1, tzinfo=UTC)
         result = contact_queries.calculate_next_reminder("weekly", from_date)
         assert result == from_date + timedelta(weeks=1)
 
     def test_every_3_days(self):
-        from_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        from_date = datetime(2025, 1, 1, tzinfo=UTC)
         result = contact_queries.calculate_next_reminder("every_3_days", from_date)
         assert result == from_date + timedelta(days=3)
 
     def test_every_2_weeks(self):
-        from_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        from_date = datetime(2025, 1, 1, tzinfo=UTC)
         result = contact_queries.calculate_next_reminder("every_2_weeks", from_date)
         assert result == from_date + timedelta(weeks=2)
 
     def test_monthly(self):
-        from_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        from_date = datetime(2025, 1, 1, tzinfo=UTC)
         result = contact_queries.calculate_next_reminder("monthly", from_date)
         assert result == from_date + timedelta(days=30)
 

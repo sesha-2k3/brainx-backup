@@ -6,16 +6,15 @@ import logging
 
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
 from src.services.groq_client import get_groq_client
 from src.utils.text import parse_llm_json
-
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +55,12 @@ Example output:
 
 JSON only, no explanation:"""
 
+
 class ExtractionError(Exception):
     """Raised when contact extraction fails."""
+
     pass
+
 
 @retry(
     stop=stop_after_attempt(3),
@@ -69,21 +71,21 @@ class ExtractionError(Exception):
 async def extract_contact_data(text: str) -> ExtractedContactData:
     """
     Extract structured contact data from free-form text using LLM.
-    
+
     Raises:
         ExtractionError: If extraction fails after retries
     """
     settings = get_settings()
-    
+
     # Limit input size
     if len(text) > MAX_EXTRACTION_TEXT_LENGTH:
         logger.warning(f"Text truncated from {len(text)} to {MAX_EXTRACTION_TEXT_LENGTH} chars")
         text = text[:MAX_EXTRACTION_TEXT_LENGTH]
-    
+
     logger.info(f"Extracting data from text: {len(text)} chars")
-    
+
     client = get_groq_client()
-    
+
     # Call LLM with timeout
     try:
         response = await asyncio.wait_for(
@@ -95,30 +97,31 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
             ),
             timeout=EXTRACTION_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Extraction timed out, will retry...")
         raise  # Reraise to trigger retry
-    
+
     content = response.choices[0].message.content.strip()
-    
+
     # Parse JSON response
     try:
         data = parse_llm_json(content)
         extracted = ExtractedContactData(**data)
-        
+
         if not extracted.name:
             raise ExtractionError("No name extracted from text")
-        
+
         logger.info(f"Extracted contact: {extracted.name}")
         return extracted
-    
+
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse LLM response, will retry: {e}")
         raise ExtractionError(f"Invalid JSON response: {e}") from e
-    
+
     except ValueError as e:
         logger.warning(f"Invalid extracted data, will retry: {e}")
         raise ExtractionError(f"Validation failed: {e}") from e
+
 
 async def extract_contact_data_safe(text: str) -> ExtractedContactData:
     """
@@ -127,23 +130,25 @@ async def extract_contact_data_safe(text: str) -> ExtractedContactData:
     """
     try:
         return await extract_contact_data(text)
-    except (ExtractionError, asyncio.TimeoutError) as e:
+    except (TimeoutError, ExtractionError) as e:
         logger.error(f"Extraction failed after retries: {e}")
         return ExtractedContactData()
 
+
 # TODO: Add these in future releases!
+
 
 async def summarize_interaction(text: str, max_length: int = 200) -> str:
     """
     Generate a concise summary of an interaction.
     """
-    prompt = f"""Summarize this interaction in {max_length} characters or less. 
-Be concise and capture the key points.
+    prompt = f"""Summarize this interaction in {max_length} characters or less.
+    Be concise and capture the key points.
 
-TEXT:
-{text}
+    TEXT:
+    {text}
 
-SUMMARY:"""
+    SUMMARY:"""
 
     settings = get_settings()
     client = get_groq_client()
@@ -154,10 +159,12 @@ SUMMARY:"""
         temperature=0.3,
         max_tokens=100,
     )
-    
+
     return response.choices[0].message.content.strip()
 
+
 # TODO: Add these in future releases!
+
 
 async def detect_intent(text: str) -> dict:
     """
@@ -182,9 +189,9 @@ JSON:"""
         temperature=0.1,
         max_tokens=150,
     )
-    
+
     content = response.choices[0].message.content.strip()
-    
+
     try:
         if content.startswith("```"):
             content = content.split("```")[1]

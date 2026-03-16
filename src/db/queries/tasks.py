@@ -1,7 +1,7 @@
 # Queries: Task CRUD and scheduling operations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,10 +13,10 @@ async def create_task(
     db: AsyncSession,
     *,
     title: str,
-    contact_id: Optional[str] = None,
-    description: Optional[str] = None,
-    due_date: Optional[datetime] = None,
-    reminder_at: Optional[datetime] = None,
+    contact_id: str | None = None,
+    description: str | None = None,
+    due_date: datetime | None = None,
+    reminder_at: datetime | None = None,
     tenant_id: str = "default",
 ) -> Task:
     task = Task(
@@ -37,7 +37,7 @@ async def get_task_by_id(
     db: AsyncSession,
     task_id: str,
     tenant_id: str = "default",
-) -> Optional[Task]:
+) -> Task | None:
     """Get a task by ID, scoped to tenant."""
     result = await db.execute(
         select(Task)
@@ -54,14 +54,14 @@ async def complete_task(
     db: AsyncSession,
     task_id: str,
     tenant_id: str = "default",
-) -> Optional[Task]:
+) -> Task | None:
     """Mark a task as completed, scoped to tenant."""
     task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
-    
+
     task.status = TaskStatus.COMPLETED
-    task.completed_at = datetime.now(timezone.utc)
+    task.completed_at = datetime.now(UTC)
     await db.flush()
     return task
 
@@ -70,12 +70,12 @@ async def cancel_task(
     db: AsyncSession,
     task_id: str,
     tenant_id: str = "default",
-) -> Optional[Task]:
+) -> Task | None:
     """Cancel a task, scoped to tenant."""
     task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
-    
+
     task.status = TaskStatus.CANCELLED
     await db.flush()
     return task
@@ -84,7 +84,7 @@ async def cancel_task(
 async def list_pending_tasks(
     db: AsyncSession,
     tenant_id: str = "default",
-    contact_id: Optional[str] = None,
+    contact_id: str | None = None,
     limit: int = 50,
 ) -> list[Task]:
     query = (
@@ -132,7 +132,7 @@ async def get_due_reminders(
             Task.tenant_id == tenant_id,
             Task.status == TaskStatus.PENDING,
             Task.reminder_at <= as_of,
-            Task.reminder_sent == False,
+            Task.reminder_sent.is_(False),
         )
         .order_by(Task.reminder_at.asc())
     )
@@ -143,12 +143,12 @@ async def mark_reminder_sent(
     db: AsyncSession,
     task_id: str,
     tenant_id: str = "default",
-) -> Optional[Task]:
+) -> Task | None:
     """Mark a task's reminder as sent, scoped to tenant."""
     task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
-    
+
     task.reminder_sent = True
     await db.flush()
     return task
@@ -178,15 +178,15 @@ async def update_task(
     task_id: str,
     tenant_id: str = "default",
     **kwargs,
-) -> Optional[Task]:
+) -> Task | None:
     """Update a task with given fields, scoped to tenant."""
     task = await get_task_by_id(db, task_id, tenant_id)
     if not task:
         return None
-    
+
     for key, value in kwargs.items():
         if hasattr(task, key):
             setattr(task, key, value)
-    
+
     await db.flush()
     return task

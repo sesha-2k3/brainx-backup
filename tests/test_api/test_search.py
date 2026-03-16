@@ -16,17 +16,12 @@ import pytest
 
 @pytest.mark.asyncio
 class TestSearchEndpoint:
-
     @patch("src.api.web.semantic_search_with_explanation", new_callable=AsyncMock)
-    async def test_search_returns_matches(
-        self, mock_search, client, db, make_contact
-    ):
+    async def test_search_returns_matches(self, mock_search, client, db, make_contact):
         await make_contact(name="Searchable Alice", company="AliceCorp")
 
         mock_search.return_value = {
-            "matches": [
-                {"id": "abc", "name": "Searchable Alice", "company": "AliceCorp"}
-            ],
+            "matches": [{"id": "abc", "name": "Searchable Alice", "company": "AliceCorp"}],
             "explanation": "Name match",
         }
 

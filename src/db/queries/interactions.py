@@ -1,7 +1,7 @@
 # Queries: Interaction CRUD operations
 
 from datetime import datetime
-from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,8 @@ async def create_interaction(
     interaction_type: str,
     summary: str,
     occurred_at: datetime,
-    raw_transcript: Optional[str] = None,
-    extra_data: Optional[dict] = None,
+    raw_transcript: str | None = None,
+    extra_data: dict | None = None,
     tenant_id: str = "default",
 ) -> Interaction:
     interaction = Interaction(
@@ -55,7 +55,7 @@ async def list_interactions_for_contact(
 async def list_recent_interactions(
     db: AsyncSession,
     tenant_id: str = "default",
-    since: Optional[datetime] = None,
+    since: datetime | None = None,
     limit: int = 50,
 ) -> list[Interaction]:
     query = select(Interaction).where(Interaction.tenant_id == tenant_id)
@@ -70,13 +70,13 @@ async def search_interactions(
     db: AsyncSession,
     query_text: str,
     tenant_id: str = "default",
-    contact_id: Optional[str] = None,
+    contact_id: str | None = None,
     limit: int = 20,
 ) -> list[Interaction]:
     """Search interactions by summary/transcript using ILIKE."""
     # Escape special LIKE characters
     escaped_query = escape_like(query_text.lower())
-    
+
     query = select(Interaction).where(
         Interaction.tenant_id == tenant_id,
         Interaction.search_vector.ilike(f"%{escaped_query}%", escape="\\"),
@@ -101,7 +101,7 @@ async def get_interaction_by_id(
     db: AsyncSession,
     interaction_id: str,
     tenant_id: str = "default",
-) -> Optional[Interaction]:
+) -> Interaction | None:
     """Get an interaction by ID, scoped to tenant."""
     result = await db.execute(
         select(Interaction).where(
@@ -116,20 +116,20 @@ async def update_interaction(
     db: AsyncSession,
     interaction_id: str,
     **kwargs,
-) -> Optional[Interaction]:
+) -> Interaction | None:
     """Update an interaction."""
     interaction = await db.get(Interaction, interaction_id)
     if not interaction:
         return None
-    
+
     for key, value in kwargs.items():
         if hasattr(interaction, key):
             setattr(interaction, key, value)
-    
+
     # Rebuild search vector if summary or transcript changed
     if "summary" in kwargs or "raw_transcript" in kwargs:
         interaction.search_vector = _build_search_vector(interaction)
-    
+
     await db.flush()
     return interaction
 
@@ -142,7 +142,7 @@ async def delete_interaction(
     interaction = await db.get(Interaction, interaction_id)
     if not interaction:
         return False
-    
+
     await db.delete(interaction)
     await db.flush()
     return True

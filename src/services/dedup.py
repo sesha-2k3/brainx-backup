@@ -1,7 +1,6 @@
 # Service: Contact deduplication using exact email/phone matching
 
 import logging
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +16,7 @@ async def find_duplicate(
     db: AsyncSession,
     extracted: ExtractedContactData,
     tenant_id: str = "default",
-) -> Optional[Contact]:
+) -> Contact | None:
     """
     Find an existing contact that matches the extracted data.
     Checks: exact email, exact phone, or exact name + company match.
@@ -45,7 +44,7 @@ async def find_duplicate(
         for contact in contacts:
             contact_name = contact.name.strip().lower() if contact.name else ""
             contact_company = contact.company.strip().lower() if contact.company else ""
-            
+
             # Exact name match
             if contact_name == name:
                 # If both have company, they must match
@@ -76,11 +75,11 @@ async def merge_or_create(
     Returns (contact, is_new) tuple.
     """
     duplicate = await find_duplicate(db, extracted, tenant_id)
-    
+
     if duplicate:
         # Update existing contact with new info
         updates = {}
-        
+
         if extracted.name and not duplicate.name:
             updates["name"] = extracted.name
         if extracted.email and not duplicate.email:
@@ -93,19 +92,19 @@ async def merge_or_create(
             updates["role"] = extracted.role
         if extracted.category and not duplicate.category:
             updates["category"] = extracted.category
-        
+
         # Append context if new
         if extracted.context:
             existing_context = duplicate.context or ""
             if extracted.context not in existing_context:
                 updates["context"] = f"{existing_context}\n{extracted.context}".strip()
-        
+
         if updates:
             await contact_queries.update_contact(db, duplicate.id, **updates)
             logger.info(f"Updated existing contact {duplicate.id} with new fields")
-        
+
         return duplicate, False
-    
+
     else:
         # Create new contact
         contact = await contact_queries.create_contact(

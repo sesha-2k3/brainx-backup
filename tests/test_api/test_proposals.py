@@ -12,7 +12,7 @@ Behaviors:
   - "DELETE /api/proposals/{id} rejects proposal"
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -23,7 +23,6 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestTextInput:
-
     @patch("src.api.web.extract_contact_data")
     async def test_process_text_creates_proposal(self, mock_extract, client):
         """Patch at web.py call site — bypasses tenacity retries entirely."""
@@ -62,7 +61,6 @@ class TestTextInput:
 
 @pytest.mark.asyncio
 class TestGetProposal:
-
     async def test_get_existing(self, client, db):
         proposal = await proposal_queries.create_proposal(
             db,
@@ -84,7 +82,6 @@ class TestGetProposal:
 
 @pytest.mark.asyncio
 class TestConfirmProposal:
-
     async def test_confirm_creates_contact(self, client, db):
         proposal = await proposal_queries.create_proposal(
             db,
@@ -123,7 +120,6 @@ class TestConfirmProposal:
 
 @pytest.mark.asyncio
 class TestRejectProposal:
-
     async def test_reject(self, client, db):
         proposal = await proposal_queries.create_proposal(
             db,

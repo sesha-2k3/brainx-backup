@@ -12,7 +12,7 @@ Behaviors:
   - "format_search_results handles empty results"
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,7 +29,6 @@ from src.services.query_parser import (
 # Pure logic: _resolve_dates (zero doubles)
 # ---------------------------------------------------------------------------
 class TestResolveDates:
-
     def test_30_days_ago(self):
         filters = {"date_range": {"start": "30_days_ago", "end": "today"}}
         result = _resolve_dates(filters)
@@ -86,7 +85,6 @@ def _make_groq_response(json_str):
 
 @pytest.mark.asyncio
 class TestParseQuery:
-
     @patch("src.services.query_parser.get_groq_client")
     async def test_contact_lookup(self, mock_get_client):
         client = AsyncMock()
@@ -147,7 +145,6 @@ class TestParseQuery:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 class TestFormatSearchResults:
-
     async def test_formats_contacts(self):
         contacts = [
             SimpleNamespace(name="Alice", company="Acme", category="investor"),
@@ -166,7 +163,7 @@ class TestFormatSearchResults:
     async def test_formats_interactions(self):
         interactions = [
             SimpleNamespace(
-                occurred_at=datetime(2025, 3, 1, tzinfo=timezone.utc),
+                occurred_at=datetime(2025, 3, 1, tzinfo=UTC),
                 summary="Discussed partnership deal with Acme",
             ),
         ]
@@ -181,7 +178,7 @@ class TestFormatSearchResults:
         tasks = [
             SimpleNamespace(
                 title="Follow up with Jane",
-                due_date=datetime(2025, 4, 15, tzinfo=timezone.utc),
+                due_date=datetime(2025, 4, 15, tzinfo=UTC),
             ),
         ]
         result = await format_search_results(

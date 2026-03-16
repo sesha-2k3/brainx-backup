@@ -7,8 +7,6 @@ Behaviors tested:
   - "display formatting produces human-readable output"
 """
 
-import pytest
-
 from src.utils.phone import format_phone_display, normalize_phone
 
 

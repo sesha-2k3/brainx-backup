@@ -6,8 +6,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api import api_router
 from src.config import get_settings
@@ -30,14 +30,14 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
     logger.info("Starting BrainX API...")
-    
+
     # Initialize database tables (dev only - use migrations in production)
     if settings.is_development:
         await init_db()
         logger.info("Database initialized")
-    
+
     yield
-    
+
     # Cleanup
     await close_db()
     logger.info("BrainX API shutdown complete")
@@ -65,7 +65,7 @@ app.include_router(api_router)
 # Serve frontend static files in production
 if FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
-    
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """Serve frontend for all non-API routes."""
@@ -74,6 +74,7 @@ if FRONTEND_DIR.exists():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIR / "index.html")
 else:
+
     @app.get("/")
     async def root():
         """Root endpoint when frontend not built."""

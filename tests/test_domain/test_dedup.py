@@ -21,13 +21,10 @@ from tests.conftest import TENANT_ID
 
 @pytest.mark.asyncio
 class TestFindDuplicate:
-
     async def test_finds_by_email(self, db, make_contact):
         await make_contact(name="Dedup Email", email="dedup@test.com")
 
-        extracted = ExtractedContactData(
-            name="Dedup Email", email="dedup@test.com"
-        )
+        extracted = ExtractedContactData(name="Dedup Email", email="dedup@test.com")
         dup = await find_duplicate(db, extracted, TENANT_ID)
         assert dup is not None
         assert dup.email == "dedup@test.com"
@@ -35,18 +32,14 @@ class TestFindDuplicate:
     async def test_finds_by_name_and_company(self, db, make_contact):
         await make_contact(name="Dedup Name", company="DedupCorp")
 
-        extracted = ExtractedContactData(
-            name="Dedup Name", company="DedupCorp"
-        )
+        extracted = ExtractedContactData(name="Dedup Name", company="DedupCorp")
         dup = await find_duplicate(db, extracted, TENANT_ID)
         assert dup is not None
 
     async def test_no_match(self, db, make_contact):
         await make_contact(name="Existing", email="existing@test.com")
 
-        extracted = ExtractedContactData(
-            name="Brand New Person", email="new@test.com"
-        )
+        extracted = ExtractedContactData(name="Brand New Person", email="new@test.com")
         dup = await find_duplicate(db, extracted, TENANT_ID)
         assert dup is None
 
@@ -60,7 +53,6 @@ class TestFindDuplicate:
 
 @pytest.mark.asyncio
 class TestMergeOrCreate:
-
     async def test_merges_new_fields_into_existing(self, db, make_contact):
         existing = await make_contact(name="Merge Target", email="merge@test.com")
 
@@ -85,7 +77,7 @@ class TestMergeOrCreate:
         assert contact.name == "Fresh Person"
 
     async def test_appends_context(self, db, make_contact):
-        original = await make_contact(
+        await make_contact(
             name="Context Person",
             email="ctx@test.com",
             context="Met at dinner",

@@ -26,6 +26,7 @@ Layers:
 
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -41,13 +42,13 @@ from sqlalchemy.types import JSON
 
 from src.db.database import Base
 
-
 # ---------------------------------------------------------------------------
 # SQLite compatibility: map PostgreSQL-specific types to SQLite equivalents
 # ---------------------------------------------------------------------------
 # JSONB doesn't exist in SQLite. We tell SQLAlchemy to compile it as JSON
 # (which SQLite stores as TEXT). This lets us use the same ORM models in
 # tests without maintaining a separate model layer.
+
 
 @event.listens_for(Base.metadata, "before_create")
 def _remap_jsonb_for_sqlite(target, connection, **kw):
@@ -92,15 +93,11 @@ async def db(async_engine) -> AsyncGenerator[AsyncSession, None]:
     Per-test database session with automatic rollback.
     Each test gets a clean slate — no test pollution.
     """
-    session_factory = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with session_factory() as session:
-        # Start a nested transaction so we can roll back after each test
-        async with session.begin():
-            yield session
-            # Rollback everything the test did
-            await session.rollback()
+    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_factory() as session, session.begin():
+        yield session
+        # Rollback everything the test did
+        await session.rollback()
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +180,8 @@ async def make_contact(db):
 @pytest_asyncio.fixture
 async def make_interaction(db):
     """Factory fixture: creates an interaction for a contact."""
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from src.db.queries import interactions as interaction_queries
 
     async def _make(
@@ -197,7 +195,7 @@ async def make_interaction(db):
             contact_id=contact_id,
             interaction_type=interaction_type,
             summary=summary,
-            occurred_at=occurred_at or datetime.now(timezone.utc),
+            occurred_at=occurred_at or datetime.now(UTC),
             tenant_id=TENANT_ID,
         )
 

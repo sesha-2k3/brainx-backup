@@ -24,7 +24,6 @@ def _make_whisper_response(text="Hello world", duration=5.0, language="en"):
 
 @pytest.mark.asyncio
 class TestTranscribeAudioBytes:
-
     @patch("src.services.transcription.get_groq_client")
     async def test_returns_text_and_metadata(self, mock_get_client):
         client = AsyncMock()
@@ -76,7 +75,6 @@ class TestTranscribeAudioBytes:
 
 @pytest.mark.asyncio
 class TestTranscribeAudioFile:
-
     async def test_missing_file_raises(self):
         with pytest.raises(FileNotFoundError):
             await transcribe_audio("/nonexistent/path/audio.ogg")

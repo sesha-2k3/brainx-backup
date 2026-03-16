@@ -11,7 +11,6 @@ import pytest
 
 @pytest.mark.asyncio
 class TestHealthEndpoints:
-
     async def test_health_returns_ok(self, client):
         resp = await client.get("/health")
         assert resp.status_code == 200

@@ -16,10 +16,7 @@ async def health_check():
 
 
 @router.get("/ready")
-async def readiness_check(
-    response: Response,
-    db: AsyncSession = Depends(get_db)
-):
+async def readiness_check(response: Response, db: AsyncSession = Depends(get_db)):
     """Readiness probe - checks database connectivity."""
     try:
         await db.execute(text("SELECT 1"))
