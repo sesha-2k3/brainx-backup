@@ -91,12 +91,6 @@ class TestMergeOrCreate:
         contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
         assert is_new is False
 
-        # SQLAlchemy's identity map caches the stale object.
-        # Expire it so the next access re-reads from the DB.
-        db.expire_all()
-
-        from src.db.queries import contacts as contact_queries
-
-        refreshed = await contact_queries.get_contact_by_id(db, contact.id, TENANT_ID)
-        assert "dinner" in refreshed.context
-        assert "conference" in refreshed.context
+        await db.refresh(contact)
+        assert "dinner" in contact.context
+        assert "conference" in contact.context
