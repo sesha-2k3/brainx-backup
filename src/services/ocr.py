@@ -73,7 +73,7 @@ async def process_business_card(file_path: str) -> dict:
 
     return {
         "raw_text": raw_text,
-        "confidence": avg_confidence / 100,  # Normalize to 0-1
+        "confidence": avg_confidence,
         "extracted": extracted,
     }
 
