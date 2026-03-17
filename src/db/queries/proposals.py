@@ -1,6 +1,6 @@
 # Queries: Proposal CRUD and state transitions
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,7 +69,7 @@ async def confirm_proposal(
     proposal.status = ProposalStatus.CONFIRMED
     proposal.contact_id = contact_id
     proposal.interaction_id = interaction_id
-    proposal.resolved_at = datetime.utcnow()
+    proposal.resolved_at = datetime.now(UTC)
     await db.flush()
     return proposal
 
@@ -99,7 +99,7 @@ async def reject_proposal(
         return None
 
     proposal.status = ProposalStatus.REJECTED
-    proposal.resolved_at = datetime.utcnow()
+    proposal.resolved_at = datetime.now(UTC)
     await db.flush()
     return proposal
 
