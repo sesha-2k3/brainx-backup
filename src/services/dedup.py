@@ -69,7 +69,7 @@ async def merge_or_create(
     db: AsyncSession,
     extracted: ExtractedContactData,
     tenant_id: str = "default",
-) -> Contact:
+) -> tuple[Contact, bool]:
     """
     Find duplicate and merge, or create new contact.
     Returns (contact, is_new) tuple.
@@ -103,7 +103,7 @@ async def merge_or_create(
             duplicate = await contact_queries.update_contact(db, duplicate.id, **updates)
             logger.info(f"Updated existing contact {duplicate.id} with new fields")
 
-        return duplicate
+        return duplicate, False
 
     else:
         # Create new contact
@@ -119,4 +119,4 @@ async def merge_or_create(
             tenant_id=tenant_id,
         )
         logger.info(f"Created new contact: {contact.id}")
-        return contact
+        return contact, True
