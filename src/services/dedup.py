@@ -100,7 +100,7 @@ async def merge_or_create(
                 updates["context"] = f"{existing_context}\n{extracted.context}".strip()
 
         if updates:
-            duplicate = await contact_queries.update_contact(db, duplicate.id, **updates)
+            duplicate = await contact_queries.update_contact(db, duplicate.id, tenant_id, **updates)
             logger.info(f"Updated existing contact {duplicate.id} with new fields")
 
         return duplicate, False
