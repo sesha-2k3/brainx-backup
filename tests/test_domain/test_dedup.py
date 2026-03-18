@@ -16,7 +16,6 @@ import pytest
 
 from src.schemas.contacts import ExtractedContactData
 from src.services.dedup import find_duplicate, merge_or_create
-from tests.conftest import TENANT_ID
 
 
 @pytest.mark.asyncio
@@ -25,7 +24,7 @@ class TestFindDuplicate:
         await make_contact(name="Dedup Email", email="dedup@test.com")
 
         extracted = ExtractedContactData(name="Dedup Email", email="dedup@test.com")
-        dup = await find_duplicate(db, extracted, TENANT_ID)
+        dup = await find_duplicate(db, extracted)
         assert dup is not None
         assert dup.email == "dedup@test.com"
 
@@ -33,21 +32,21 @@ class TestFindDuplicate:
         await make_contact(name="Dedup Name", company="DedupCorp")
 
         extracted = ExtractedContactData(name="Dedup Name", company="DedupCorp")
-        dup = await find_duplicate(db, extracted, TENANT_ID)
+        dup = await find_duplicate(db, extracted)
         assert dup is not None
 
     async def test_no_match(self, db, make_contact):
         await make_contact(name="Existing", email="existing@test.com")
 
         extracted = ExtractedContactData(name="Brand New Person", email="new@test.com")
-        dup = await find_duplicate(db, extracted, TENANT_ID)
+        dup = await find_duplicate(db, extracted)
         assert dup is None
 
     async def test_name_only_match(self, db, make_contact):
         await make_contact(name="Solo Name")
 
         extracted = ExtractedContactData(name="Solo Name")
-        dup = await find_duplicate(db, extracted, TENANT_ID)
+        dup = await find_duplicate(db, extracted)
         assert dup is not None
 
 
@@ -62,7 +61,7 @@ class TestMergeOrCreate:
             company="NewCorp",
             role="VP",
         )
-        contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
+        contact, is_new = await merge_or_create(db, extracted)
         assert is_new is False
         assert contact.id == existing.id
 
@@ -72,6 +71,6 @@ class TestMergeOrCreate:
             email="fresh@unique.com",
             company="UniqueInc",
         )
-        contact, is_new = await merge_or_create(db, extracted, TENANT_ID)
+        contact, is_new = await merge_or_create(db, extracted)
         assert is_new is True
         assert contact.name == "Fresh Person"

@@ -13,7 +13,6 @@ import pytest
 
 from src.db.models import ProposalStatus
 from src.db.queries import proposals as proposal_queries
-from tests.conftest import TENANT_ID
 
 
 @pytest.mark.asyncio
@@ -24,7 +23,6 @@ class TestProposalCreation:
             source_type="text",
             whatsapp_user_id="user-123",
             extracted_data={"name": "Test Person", "company": "TestCo"},
-            tenant_id=TENANT_ID,
         )
         assert proposal.status == ProposalStatus.PENDING
         assert proposal.extracted_data["name"] == "Test Person"
@@ -35,7 +33,6 @@ class TestProposalCreation:
             source_type="voice",
             whatsapp_user_id="user-456",
             extracted_data={"name": "Another"},
-            tenant_id=TENANT_ID,
         )
         found = await proposal_queries.get_proposal_by_id(db, proposal.id)
         assert found is not None
@@ -51,7 +48,6 @@ class TestProposalConfirmation:
             source_type="text",
             whatsapp_user_id="user-789",
             extracted_data={"name": "Confirmed Contact"},
-            tenant_id=TENANT_ID,
         )
 
         confirmed = await proposal_queries.confirm_proposal(db, proposal.id, contact_id=contact.id)
@@ -72,7 +68,6 @@ class TestProposalRejection:
             source_type="text",
             whatsapp_user_id="user-rej",
             extracted_data={"name": "Reject Me"},
-            tenant_id=TENANT_ID,
         )
 
         rejected = await proposal_queries.reject_proposal(db, proposal.id)
@@ -92,7 +87,6 @@ class TestProposalEdit:
             source_type="text",
             whatsapp_user_id="user-edit",
             extracted_data={"name": "Original"},
-            tenant_id=TENANT_ID,
         )
 
         updated = await proposal_queries.update_proposal_data(db, proposal.id, {"name": "Edited"})
@@ -108,12 +102,9 @@ class TestPendingProposals:
             source_type="text",
             whatsapp_user_id="user-pending",
             extracted_data={"name": "Pending Person"},
-            tenant_id=TENANT_ID,
         )
 
-        pending = await proposal_queries.get_pending_proposal_for_user(
-            db, "user-pending", TENANT_ID
-        )
+        pending = await proposal_queries.get_pending_proposal_for_user(db, "user-pending")
         assert pending is not None
         assert pending.extracted_data["name"] == "Pending Person"
 
@@ -123,8 +114,7 @@ class TestPendingProposals:
             source_type="text",
             whatsapp_user_id="user-list",
             extracted_data={"name": "Listed"},
-            tenant_id=TENANT_ID,
         )
 
-        pending = await proposal_queries.list_pending_proposals(db, TENANT_ID)
+        pending = await proposal_queries.list_pending_proposals(db)
         assert len(pending) >= 1

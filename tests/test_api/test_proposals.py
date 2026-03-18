@@ -18,14 +18,12 @@ import pytest
 
 from src.db.queries import proposals as proposal_queries
 from src.schemas.contacts import ExtractedContactData, ExtractedTask
-from tests.conftest import TENANT_ID
 
 
 @pytest.mark.asyncio
 class TestTextInput:
     @patch("src.api.web.extract_contact_data")
     async def test_process_text_creates_proposal(self, mock_extract, client):
-        """Patch at web.py call site — bypasses tenacity retries entirely."""
         mock_extract.return_value = ExtractedContactData(
             name="Alice Test",
             email="alice@test.com",
@@ -49,7 +47,6 @@ class TestTextInput:
 
     @patch("src.api.web.extract_contact_data")
     async def test_process_text_returns_400_on_no_name(self, mock_extract, client):
-        """When extraction returns no name, endpoint should return 400."""
         mock_extract.return_value = ExtractedContactData(name=None)
 
         resp = await client.post(
@@ -67,7 +64,6 @@ class TestGetProposal:
             source_type="text",
             whatsapp_user_id="web",
             extracted_data={"name": "Prop Person"},
-            tenant_id=TENANT_ID,
         )
 
         resp = await client.get(f"/api/proposals/{proposal.id}")
@@ -91,7 +87,6 @@ class TestConfirmProposal:
                 "name": "Confirm Person",
                 "email": "confirm@test.com",
             },
-            tenant_id=TENANT_ID,
         )
 
         resp = await client.post(
@@ -126,7 +121,6 @@ class TestRejectProposal:
             source_type="text",
             whatsapp_user_id="web",
             extracted_data={"name": "Reject Person"},
-            tenant_id=TENANT_ID,
         )
 
         resp = await client.delete(f"/api/proposals/{proposal.id}")

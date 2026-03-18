@@ -16,7 +16,6 @@ import pytest
 
 from src.db.models import TaskStatus
 from src.db.queries import tasks as task_queries
-from tests.conftest import TENANT_ID
 
 
 @pytest.mark.asyncio
@@ -41,13 +40,13 @@ class TestTaskCreation:
 class TestTaskCompletion:
     async def test_complete_sets_status_and_timestamp(self, db, make_task):
         task = await make_task(title="Finish report")
-        completed = await task_queries.complete_task(db, task.id, TENANT_ID)
+        completed = await task_queries.complete_task(db, task.id)
 
         assert completed.status == TaskStatus.COMPLETED
         assert completed.completed_at is not None
 
     async def test_complete_nonexistent_returns_none(self, db):
-        result = await task_queries.complete_task(db, "fake-id", TENANT_ID)
+        result = await task_queries.complete_task(db, "fake-id")
         assert result is None
 
 
@@ -55,11 +54,11 @@ class TestTaskCompletion:
 class TestTaskCancellation:
     async def test_cancel_changes_status(self, db, make_task):
         task = await make_task(title="Cancelled task")
-        cancelled = await task_queries.cancel_task(db, task.id, TENANT_ID)
+        cancelled = await task_queries.cancel_task(db, task.id)
         assert cancelled.status == TaskStatus.CANCELLED
 
     async def test_cancel_nonexistent_returns_none(self, db):
-        result = await task_queries.cancel_task(db, "nope", TENANT_ID)
+        result = await task_queries.cancel_task(db, "nope")
         assert result is None
 
 
@@ -68,9 +67,9 @@ class TestTaskListing:
     async def test_list_pending_only(self, db, make_task):
         await make_task(title="Active")
         t2 = await make_task(title="Done")
-        await task_queries.complete_task(db, t2.id, TENANT_ID)
+        await task_queries.complete_task(db, t2.id)
 
-        pending = await task_queries.list_pending_tasks(db, TENANT_ID)
+        pending = await task_queries.list_pending_tasks(db)
         titles = [t.title for t in pending]
         assert "Active" in titles
         assert "Done" not in titles
@@ -81,7 +80,7 @@ class TestTaskListing:
         await make_task(title="Task for A", contact_id=c1.id)
         await make_task(title="Task for B", contact_id=c2.id)
 
-        tasks = await task_queries.list_tasks_for_contact(db, c1.id, TENANT_ID)
+        tasks = await task_queries.list_tasks_for_contact(db, c1.id)
         assert all(t.contact_id == c1.id for t in tasks)
 
 
@@ -95,7 +94,7 @@ class TestTasksDueBy:
         await make_task(title="Future", due_date=future)
 
         now = datetime.now(UTC)
-        due = await task_queries.list_tasks_due_by(db, now, TENANT_ID)
+        due = await task_queries.list_tasks_due_by(db, now)
         titles = [t.title for t in due]
         assert "Overdue" in titles
         assert "Future" not in titles
@@ -109,11 +108,10 @@ class TestTaskReminders:
             db,
             title="Remind me",
             reminder_at=past_reminder,
-            tenant_id=TENANT_ID,
         )
 
         now = datetime.now(UTC)
-        reminders = await task_queries.get_due_reminders(db, now, TENANT_ID)
+        reminders = await task_queries.get_due_reminders(db, now)
         assert any(t.id == task.id for t in reminders)
 
     async def test_mark_reminder_sent(self, db):
@@ -121,10 +119,9 @@ class TestTaskReminders:
             db,
             title="Sent reminder",
             reminder_at=datetime.now(UTC) - timedelta(hours=1),
-            tenant_id=TENANT_ID,
         )
 
-        marked = await task_queries.mark_reminder_sent(db, task.id, TENANT_ID)
+        marked = await task_queries.mark_reminder_sent(db, task.id)
         assert marked.reminder_sent is True
 
 
@@ -132,9 +129,9 @@ class TestTaskReminders:
 class TestTaskUpdate:
     async def test_update_title(self, db, make_task):
         task = await make_task(title="Old title")
-        updated = await task_queries.update_task(db, task.id, TENANT_ID, title="New title")
+        updated = await task_queries.update_task(db, task.id, title="New title")
         assert updated.title == "New title"
 
     async def test_update_nonexistent_returns_none(self, db):
-        result = await task_queries.update_task(db, "nope", TENANT_ID, title="Ghost")
+        result = await task_queries.update_task(db, "nope", title="Ghost")
         assert result is None
