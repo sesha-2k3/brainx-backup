@@ -1,5 +1,14 @@
-# Database package
-from src.db.database import Base, async_session_factory, close_db, engine, get_db, init_db
+from src.db.database import (
+    Base,
+    TenantMixin,
+    TenantSession,
+    async_session_factory,
+    close_db,
+    engine,
+    get_db,
+    get_db_unscoped,
+    init_db,
+)
 from src.db.models import (
     Contact,
     Interaction,
@@ -17,9 +26,12 @@ __all__ = [
     "ProposalStatus",
     "Task",
     "TaskStatus",
+    "TenantMixin",
+    "TenantSession",
     "async_session_factory",
     "close_db",
     "engine",
     "get_db",
+    "get_db_unscoped",
     "init_db",
 ]

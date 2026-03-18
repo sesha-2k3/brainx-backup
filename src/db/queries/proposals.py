@@ -16,10 +16,8 @@ async def create_proposal(
     extracted_data: dict,
     source_message_id: str | None = None,
     confidence_score: float | None = None,
-    tenant_id: str = "default",
 ) -> Proposal:
     proposal = Proposal(
-        tenant_id=tenant_id,
         source_type=source_type,
         source_message_id=source_message_id,
         whatsapp_user_id=whatsapp_user_id,
@@ -40,13 +38,11 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: str) -> Proposal | N
 async def get_pending_proposal_for_user(
     db: AsyncSession,
     whatsapp_user_id: str,
-    tenant_id: str = "default",
 ) -> Proposal | None:
     """Get the most recent pending proposal for a user."""
     result = await db.execute(
         select(Proposal)
         .where(
-            Proposal.tenant_id == tenant_id,
             Proposal.whatsapp_user_id == whatsapp_user_id,
             Proposal.status == ProposalStatus.PENDING,
         )
@@ -106,12 +102,11 @@ async def reject_proposal(
 
 async def list_pending_proposals(
     db: AsyncSession,
-    tenant_id: str = "default",
     limit: int = 20,
 ) -> list[Proposal]:
     result = await db.execute(
         select(Proposal)
-        .where(Proposal.tenant_id == tenant_id, Proposal.status == ProposalStatus.PENDING)
+        .where(Proposal.status == ProposalStatus.PENDING)
         .order_by(Proposal.created_at.desc())
         .limit(limit)
     )

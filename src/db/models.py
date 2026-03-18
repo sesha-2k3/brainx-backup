@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.db.database import Base
+from src.db.database import Base, TenantMixin
 
 
 # Enums
@@ -36,7 +36,7 @@ class TaskStatus(enum.StrEnum):
 
 
 # Models
-class Contact(Base):
+class Contact(TenantMixin, Base):
     __tablename__ = "contacts"
 
     id: Mapped[str] = mapped_column(
@@ -96,7 +96,7 @@ class Contact(Base):
     )
 
 
-class Interaction(Base):
+class Interaction(TenantMixin, Base):
     __tablename__ = "interactions"
 
     id: Mapped[str] = mapped_column(
@@ -134,7 +134,7 @@ class Interaction(Base):
     )
 
 
-class Proposal(Base):
+class Proposal(TenantMixin, Base):
     __tablename__ = "proposals"
 
     id: Mapped[str] = mapped_column(
@@ -174,7 +174,7 @@ class Proposal(Base):
     )
 
 
-class Task(Base):
+class Task(TenantMixin, Base):
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(

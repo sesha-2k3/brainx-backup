@@ -12,7 +12,6 @@ from src.utils.text import escape_like
 async def search_all(
     db: AsyncSession,
     query_text: str,
-    tenant_id: str = "default",
     limit: int = 20,
 ) -> dict:
     """
@@ -30,7 +29,6 @@ async def search_all(
     contacts_result = await db.execute(
         select(Contact)
         .where(
-            Contact.tenant_id == tenant_id,
             Contact.search_vector.ilike(pattern, escape="\\"),
         )
         .order_by(Contact.updated_at.desc())
@@ -42,7 +40,6 @@ async def search_all(
     interactions_result = await db.execute(
         select(Interaction)
         .where(
-            Interaction.tenant_id == tenant_id,
             Interaction.search_vector.ilike(pattern, escape="\\"),
         )
         .order_by(Interaction.occurred_at.desc())
@@ -59,13 +56,11 @@ async def search_all(
 async def get_contacts_by_category(
     db: AsyncSession,
     category: str,
-    tenant_id: str = "default",
     since: datetime | None = None,
     limit: int = 50,
 ) -> list[Contact]:
     """Get contacts filtered by category, optionally since a date."""
     query = select(Contact).where(
-        Contact.tenant_id == tenant_id,
         Contact.category == category,
     )
     if since:
@@ -78,7 +73,6 @@ async def get_contacts_by_category(
 async def get_interactions_by_company(
     db: AsyncSession,
     company: str,
-    tenant_id: str = "default",
     since: datetime | None = None,
     limit: int = 20,
 ) -> list[Interaction]:
@@ -95,7 +89,6 @@ async def get_interactions_by_company(
     contact_subq = (
         select(Contact.id)
         .where(
-            Contact.tenant_id == tenant_id,
             Contact.company.ilike(pattern, escape="\\"),
         )
         .scalar_subquery()
@@ -103,7 +96,6 @@ async def get_interactions_by_company(
 
     # Build interactions query using subquery
     query = select(Interaction).where(
-        Interaction.tenant_id == tenant_id,
         Interaction.contact_id.in_(contact_subq),
     )
 
@@ -117,7 +109,6 @@ async def get_interactions_by_company(
 
 async def get_recent_activity(
     db: AsyncSession,
-    tenant_id: str = "default",
     days: int = 7,
     limit: int = 50,
 ) -> list[Interaction]:
@@ -128,7 +119,6 @@ async def get_recent_activity(
     result = await db.execute(
         select(Interaction)
         .where(
-            Interaction.tenant_id == tenant_id,
             Interaction.occurred_at >= since,
         )
         .order_by(Interaction.occurred_at.desc())
@@ -140,15 +130,12 @@ async def get_recent_activity(
 async def get_contact_with_interactions(
     db: AsyncSession,
     contact_id: str,
-    tenant_id: str = "default",
     interaction_limit: int = 10,
 ) -> dict | None:
     """Get a contact with their recent interactions."""
-    # Fetch with tenant_id check to prevent cross-tenant access
     result = await db.execute(
         select(Contact).where(
             Contact.id == contact_id,
-            Contact.tenant_id == tenant_id,
         )
     )
     contact = result.scalar_one_or_none()
@@ -160,7 +147,6 @@ async def get_contact_with_interactions(
         select(Interaction)
         .where(
             Interaction.contact_id == contact_id,
-            Interaction.tenant_id == tenant_id,
         )
         .order_by(Interaction.occurred_at.desc())
         .limit(interaction_limit)

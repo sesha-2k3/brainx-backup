@@ -18,11 +18,9 @@ async def create_interaction(
     occurred_at: datetime,
     raw_transcript: str | None = None,
     extra_data: dict | None = None,
-    tenant_id: str = "default",
 ) -> Interaction:
     interaction = Interaction(
         contact_id=contact_id,
-        tenant_id=tenant_id,
         interaction_type=interaction_type,
         summary=summary,
         occurred_at=occurred_at,
@@ -54,11 +52,10 @@ async def list_interactions_for_contact(
 
 async def list_recent_interactions(
     db: AsyncSession,
-    tenant_id: str = "default",
     since: datetime | None = None,
     limit: int = 50,
 ) -> list[Interaction]:
-    query = select(Interaction).where(Interaction.tenant_id == tenant_id)
+    query = select(Interaction)
     if since:
         query = query.where(Interaction.occurred_at >= since)
     query = query.order_by(Interaction.occurred_at.desc()).limit(limit)
@@ -69,7 +66,6 @@ async def list_recent_interactions(
 async def search_interactions(
     db: AsyncSession,
     query_text: str,
-    tenant_id: str = "default",
     contact_id: str | None = None,
     limit: int = 20,
 ) -> list[Interaction]:
@@ -78,7 +74,6 @@ async def search_interactions(
     escaped_query = escape_like(query_text.lower())
 
     query = select(Interaction).where(
-        Interaction.tenant_id == tenant_id,
         Interaction.search_vector.ilike(f"%{escaped_query}%", escape="\\"),
     )
     if contact_id:
@@ -100,13 +95,11 @@ def _build_search_vector(interaction: Interaction) -> str:
 async def get_interaction_by_id(
     db: AsyncSession,
     interaction_id: str,
-    tenant_id: str = "default",
 ) -> Interaction | None:
     """Get an interaction by ID, scoped to tenant."""
     result = await db.execute(
         select(Interaction).where(
             Interaction.id == interaction_id,
-            Interaction.tenant_id == tenant_id,
         )
     )
     return result.scalar_one_or_none()

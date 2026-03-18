@@ -21,7 +21,6 @@ async def create_contact(
     tags: list[str] | None = None,
     notes: str | None = None,
     context: str | None = None,
-    tenant_id: str = "default",
 ) -> Contact:
     contact = Contact(
         name=name,
@@ -33,7 +32,6 @@ async def create_contact(
         tags=tags or [],
         notes=notes,
         context=context,
-        tenant_id=tenant_id,
     )
     # Build search vector
     contact.search_vector = _build_search_vector(contact)
@@ -45,43 +43,25 @@ async def create_contact(
 async def get_contact_by_id(
     db: AsyncSession,
     contact_id: str,
-    tenant_id: str = "default",
 ) -> Contact | None:
     """Get a contact by ID, scoped to tenant."""
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.tenant_id == tenant_id,
-        )
-    )
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
     return result.scalar_one_or_none()
 
 
 async def get_contact_by_email(
     db: AsyncSession,
     email: str,
-    tenant_id: str = "default",
 ) -> Contact | None:
-    result = await db.execute(
-        select(Contact).where(
-            Contact.email == email,
-            Contact.tenant_id == tenant_id,
-        )
-    )
+    result = await db.execute(select(Contact).where(Contact.email == email))
     return result.scalar_one_or_none()
 
 
 async def get_contact_by_phone(
     db: AsyncSession,
     phone: str,
-    tenant_id: str = "default",
 ) -> Contact | None:
-    result = await db.execute(
-        select(Contact).where(
-            Contact.phone == phone,
-            Contact.tenant_id == tenant_id,
-        )
-    )
+    result = await db.execute(select(Contact).where(Contact.phone == phone))
     return result.scalar_one_or_none()
 
 
@@ -89,7 +69,6 @@ async def find_duplicate_contact(
     db: AsyncSession,
     email: str | None,
     phone: str | None,
-    tenant_id: str = "default",
 ) -> Contact | None:
     """Find existing contact by exact email or phone match."""
     if not email and not phone:
@@ -103,7 +82,6 @@ async def find_duplicate_contact(
 
     result = await db.execute(
         select(Contact).where(
-            Contact.tenant_id == tenant_id,
             or_(*conditions),
         )
     )
@@ -113,11 +91,10 @@ async def find_duplicate_contact(
 async def update_contact(
     db: AsyncSession,
     contact_id: str,
-    tenant_id: str = "default",
     **updates,
 ) -> Contact | None:
     """Update a contact, scoped to tenant."""
-    contact = await get_contact_by_id(db, contact_id, tenant_id)
+    contact = await get_contact_by_id(db, contact_id)
     if not contact:
         return None
 
@@ -133,12 +110,11 @@ async def update_contact(
 
 async def list_contacts(
     db: AsyncSession,
-    tenant_id: str = "default",
     category: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[Contact]:
-    query = select(Contact).where(Contact.tenant_id == tenant_id)
+    query = select(Contact)
     if category:
         query = query.where(Contact.category == category)
     query = query.order_by(Contact.updated_at.desc()).limit(limit).offset(offset)
@@ -149,14 +125,12 @@ async def list_contacts(
 async def search_contacts_by_name(
     db: AsyncSession,
     name: str,
-    tenant_id: str = "default",
     limit: int = 10,
 ) -> list[Contact]:
     escaped_name = escape_like(name)
     result = await db.execute(
         select(Contact)
         .where(
-            Contact.tenant_id == tenant_id,
             Contact.name.ilike(f"%{escaped_name}%", escape="\\"),
         )
         .order_by(Contact.name)
@@ -180,14 +154,12 @@ def _build_search_vector(contact: Contact) -> str:
 
 async def get_contacts_due_for_reminder(
     db: AsyncSession,
-    tenant_id: str = "default",
 ) -> list[Contact]:
     """Get contacts whose next_reminder_at is due."""
     now = datetime.now(UTC)
     result = await db.execute(
         select(Contact)
         .where(
-            Contact.tenant_id == tenant_id,
             Contact.reminder_frequency.isnot(None),
             Contact.next_reminder_at <= now,
         )

@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 async def find_duplicate(
     db: AsyncSession,
     extracted: ExtractedContactData,
-    tenant_id: str = "default",
 ) -> Contact | None:
     """
     Find an existing contact that matches the extracted data.
@@ -32,7 +31,6 @@ async def find_duplicate(
             db,
             email=email,
             phone=phone,
-            tenant_id=tenant_id,
         )
         if duplicate:
             logger.info(f"Found duplicate by email/phone: {duplicate.id} ({duplicate.name})")
@@ -40,7 +38,7 @@ async def find_duplicate(
 
     # Then try name + company match
     if name:
-        contacts = await contact_queries.search_contacts_by_name(db, name, tenant_id, limit=10)
+        contacts = await contact_queries.search_contacts_by_name(db, name, limit=10)
         for contact in contacts:
             contact_name = contact.name.strip().lower() if contact.name else ""
             contact_company = contact.company.strip().lower() if contact.company else ""
@@ -68,13 +66,12 @@ async def find_duplicate(
 async def merge_or_create(
     db: AsyncSession,
     extracted: ExtractedContactData,
-    tenant_id: str = "default",
 ) -> tuple[Contact, bool]:
     """
     Find duplicate and merge, or create new contact.
     Returns (contact, is_new) tuple.
     """
-    duplicate = await find_duplicate(db, extracted, tenant_id)
+    duplicate = await find_duplicate(db, extracted)
 
     if duplicate:
         # Update existing contact with new info
@@ -100,7 +97,7 @@ async def merge_or_create(
                 updates["context"] = f"{existing_context}\n{extracted.context}".strip()
 
         if updates:
-            duplicate = await contact_queries.update_contact(db, duplicate.id, tenant_id, **updates)
+            duplicate = await contact_queries.update_contact(db, duplicate.id, **updates)
             logger.info(f"Updated existing contact {duplicate.id} with new fields")
 
         return duplicate, False
@@ -116,7 +113,6 @@ async def merge_or_create(
             role=extracted.role,
             category=extracted.category,
             context=extracted.context,
-            tenant_id=tenant_id,
         )
         logger.info(f"Created new contact: {contact.id}")
         return contact, True

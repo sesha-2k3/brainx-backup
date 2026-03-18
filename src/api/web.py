@@ -82,14 +82,13 @@ async def process_text_input(
     if not extracted or not extracted.name:
         raise HTTPException(status_code=400, detail="Could not extract contact information")
 
-    duplicate = await find_duplicate(db, extracted, settings.tenant_id)
+    duplicate = await find_duplicate(db, extracted)
 
     proposal = await proposal_queries.create_proposal(
         db,
         source_type="text",
         whatsapp_user_id="web",
         extracted_data=extracted.model_dump(),
-        tenant_id=settings.tenant_id,
     )
 
     # Convert tasks to list of dicts
@@ -175,7 +174,6 @@ async def process_file_input(
         whatsapp_user_id="web",
         extracted_data=extracted.model_dump(),
         confidence_score=confidence,
-        tenant_id=settings.tenant_id,
     )
 
     return {
@@ -224,7 +222,7 @@ async def confirm_proposal(
         raise HTTPException(status_code=404, detail="Proposal not found")
 
     extracted = ExtractedContactData(**proposal.extracted_data)
-    duplicate = await find_duplicate(db, extracted, settings.tenant_id)
+    duplicate = await find_duplicate(db, extracted)
 
     if duplicate:
         contact = duplicate
@@ -249,7 +247,6 @@ async def confirm_proposal(
             role=data.role,
             category=data.category,
             context=data.context,
-            tenant_id=settings.tenant_id,
         )
 
     interaction = None
@@ -260,7 +257,6 @@ async def confirm_proposal(
             interaction_type="note",
             summary=data.interaction_summary,
             occurred_at=datetime.now(UTC),
-            tenant_id=settings.tenant_id,
         )
 
     created_tasks = []
@@ -275,7 +271,6 @@ async def confirm_proposal(
                 title=task_data["title"],
                 contact_id=contact.id,
                 due_date=due_date,
-                tenant_id=settings.tenant_id,
             )
             created_tasks.append(task)
 
@@ -321,7 +316,6 @@ async def list_contacts(
     """List contacts with optional category filter."""
     contacts = await contact_queries.list_contacts(
         db,
-        tenant_id=settings.tenant_id,
         category=category,
         limit=limit,
         offset=offset,
@@ -353,7 +347,7 @@ async def get_due_reminders(
     db: AsyncSession = Depends(get_db),
 ):
     """Get contacts that are due for a catch-up."""
-    contacts = await contact_queries.get_contacts_due_for_reminder(db, settings.tenant_id)
+    contacts = await contact_queries.get_contacts_due_for_reminder(db)
 
     return {
         "contacts": [
@@ -378,9 +372,7 @@ async def get_contact(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a contact with their interactions."""
-    result = await search_queries.get_contact_with_interactions(
-        db, contact_id, tenant_id=settings.tenant_id
-    )
+    result = await search_queries.get_contact_with_interactions(db, contact_id)
     if not result:
         raise HTTPException(status_code=404, detail="Contact not found")
 
@@ -429,7 +421,6 @@ async def create_contact_direct(
         category=data.category,
         context=data.context,
         notes=data.notes,
-        tenant_id=settings.tenant_id,
     )
 
     return {
@@ -448,15 +439,13 @@ async def update_contact(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a contact."""
-    contact = await contact_queries.get_contact_by_id(db, contact_id, tenant_id=settings.tenant_id)
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if updates:
-        contact = await contact_queries.update_contact(
-            db, contact_id, tenant_id=settings.tenant_id, **updates
-        )
+        contact = await contact_queries.update_contact(db, contact_id, **updates)
 
     return {
         "contact": {
@@ -479,7 +468,7 @@ async def delete_contact(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a contact and all related data."""
-    contact = await contact_queries.get_contact_by_id(db, contact_id, tenant_id=settings.tenant_id)
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
@@ -514,7 +503,7 @@ async def set_contact_reminder(
     db: AsyncSession = Depends(get_db),
 ):
     """Set stay-in-touch reminder frequency for a contact."""
-    contact = await contact_queries.get_contact_by_id(db, contact_id, tenant_id=settings.tenant_id)
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
@@ -543,7 +532,7 @@ async def mark_contact_contacted(
     db: AsyncSession = Depends(get_db),
 ):
     """Mark a contact as contacted and reset their reminder."""
-    contact = await contact_queries.get_contact_by_id(db, contact_id, tenant_id=settings.tenant_id)
+    contact = await contact_queries.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
@@ -571,10 +560,10 @@ async def list_tasks(
     """List tasks."""
     if contact_id:
         tasks = await task_queries.list_tasks_for_contact(
-            db, contact_id, tenant_id=settings.tenant_id, include_completed=include_completed
+            db, contact_id, include_completed=include_completed
         )
     else:
-        tasks = await task_queries.list_pending_tasks(db, tenant_id=settings.tenant_id, limit=100)
+        tasks = await task_queries.list_pending_tasks(db, limit=100)
 
     return {
         "tasks": [
@@ -604,7 +593,6 @@ async def create_task(
         contact_id=data.contact_id,
         description=data.description,
         due_date=data.due_date,
-        tenant_id=settings.tenant_id,
     )
 
     return {
@@ -624,7 +612,7 @@ async def update_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a task."""
-    task = await task_queries.get_task_by_id(db, task_id, tenant_id=settings.tenant_id)
+    task = await task_queries.get_task_by_id(db, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -645,7 +633,7 @@ async def update_task(
             updates["contact_id"] = task_data.contact_id
 
     if updates:
-        await task_queries.update_task(db, task_id, tenant_id=settings.tenant_id, **updates)
+        await task_queries.update_task(db, task_id, **updates)
 
     return {"success": True}
 
@@ -656,11 +644,11 @@ async def complete_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Mark a task as completed."""
-    task = await task_queries.get_task_by_id(db, task_id, tenant_id=settings.tenant_id)
+    task = await task_queries.get_task_by_id(db, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    await task_queries.complete_task(db, task_id, tenant_id=settings.tenant_id)
+    await task_queries.complete_task(db, task_id)
     return {"success": True}
 
 
@@ -670,11 +658,11 @@ async def delete_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a task."""
-    task = await task_queries.get_task_by_id(db, task_id, tenant_id=settings.tenant_id)
+    task = await task_queries.get_task_by_id(db, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    await task_queries.cancel_task(db, task_id, tenant_id=settings.tenant_id)
+    await task_queries.cancel_task(db, task_id)
     return {"success": True}
 
 
@@ -687,9 +675,7 @@ async def create_interaction(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new interaction."""
-    contact = await contact_queries.get_contact_by_id(
-        db, data.contact_id, tenant_id=settings.tenant_id
-    )
+    contact = await contact_queries.get_contact_by_id(db, data.contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
@@ -703,7 +689,6 @@ async def create_interaction(
         interaction_type=data.interaction_type,
         summary=data.summary,
         occurred_at=occurred_at,
-        tenant_id=settings.tenant_id,
     )
 
     return {
@@ -724,9 +709,7 @@ async def update_interaction(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an interaction."""
-    interaction = await interaction_queries.get_interaction_by_id(
-        db, interaction_id, tenant_id=settings.tenant_id
-    )
+    interaction = await interaction_queries.get_interaction_by_id(db, interaction_id)
     if not interaction:
         raise HTTPException(status_code=404, detail="Interaction not found")
 
@@ -750,9 +733,7 @@ async def delete_interaction(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an interaction."""
-    interaction = await interaction_queries.get_interaction_by_id(
-        db, interaction_id, tenant_id=settings.tenant_id
-    )
+    interaction = await interaction_queries.get_interaction_by_id(db, interaction_id)
     if not interaction:
         raise HTTPException(status_code=404, detail="Interaction not found")
 
