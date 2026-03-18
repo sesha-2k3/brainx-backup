@@ -1,27 +1,5 @@
 """
 Root test configuration.
-
-Test philosophy (aligned with your TDD principles):
-─────────────────────────────────────────────────────
-• "Unit" = a behavior, not a function or class.
-  e.g. "creating a contact deduplicates by email" is one unit.
-
-• Test doubles usage:
-  - FAKE:  async SQLite database (real SQL, in-memory, fast)
-  - STUB:  Groq API returns canned responses (no network)
-  - DUMMY: placeholder values for required but irrelevant params
-  - SPY:   verify that the Groq client was called (when relevant)
-  - MOCK:  reserved ONLY for verifying foreign system interactions
-
-• Tests should NOT break when you refactor internals.
-  We test through public boundaries: HTTP endpoints, query functions,
-  service functions — never patch private helpers.
-
-Layers:
-  tests/test_utils/    → Pure logic. Zero doubles.
-  tests/test_domain/   → DB behaviors via query layer. Fake SQLite DB.
-  tests/test_services/ → Service layer. Fake DB + Groq stubs.
-  tests/test_api/      → HTTP endpoints. TestClient + Fake DB + Groq stubs.
 """
 
 import asyncio
@@ -40,14 +18,11 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.types import JSON
 
-from src.db.database import Base
+from src.db.database import Base, TenantSession
 
 # ---------------------------------------------------------------------------
 # SQLite compatibility: map PostgreSQL-specific types to SQLite equivalents
 # ---------------------------------------------------------------------------
-# JSONB doesn't exist in SQLite. We tell SQLAlchemy to compile it as JSON
-# (which SQLite stores as TEXT). This lets us use the same ORM models in
-# tests without maintaining a separate model layer.
 
 
 @event.listens_for(Base.metadata, "before_create")
@@ -74,6 +49,9 @@ def event_loop():
 # ---------------------------------------------------------------------------
 # FAKE: Async SQLite database (real SQL engine, zero network, ephemeral)
 # ---------------------------------------------------------------------------
+TENANT_ID = "test-tenant"
+
+
 @pytest_asyncio.fixture(scope="session")
 async def async_engine():
     """Session-scoped async SQLite engine. Tables created once."""
@@ -91,12 +69,16 @@ async def async_engine():
 async def db(async_engine) -> AsyncGenerator[AsyncSession, None]:
     """
     Per-test database session with automatic rollback.
-    Each test gets a clean slate — no test pollution.
+    Uses TenantSession for auto-filter and auto-stamp.
     """
-    session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        async_engine,
+        class_=TenantSession,
+        expire_on_commit=False,
+        tenant_id=TENANT_ID,
+    )
     async with session_factory() as session, session.begin():
         yield session
-        # Rollback everything the test did
         await session.rollback()
 
 
@@ -107,11 +89,9 @@ async def db(async_engine) -> AsyncGenerator[AsyncSession, None]:
 def groq_stub():
     """
     A stub Groq client that returns predictable extraction results.
-    Use this when testing code that calls the Groq API.
     """
     client = AsyncMock()
 
-    # Default: chat completion returns valid JSON
     completion_response = MagicMock()
     completion_response.choices = [
         MagicMock(
@@ -126,7 +106,6 @@ def groq_stub():
     ]
     client.chat.completions.create = AsyncMock(return_value=completion_response)
 
-    # Default: audio transcription returns text
     transcription_response = MagicMock()
     transcription_response.text = "Met Jane Doe from Acme Corp, she is the CTO."
     transcription_response.duration = 15.0
@@ -137,14 +116,7 @@ def groq_stub():
 
 
 # ---------------------------------------------------------------------------
-# Constants: dummy values for required but irrelevant params
-# ---------------------------------------------------------------------------
-TENANT_ID = "test-tenant"
-
-
-# ---------------------------------------------------------------------------
 # Factory fixtures: create real ORM objects in the fake DB
-# Available to ALL test layers (domain, services, API)
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def make_contact(db):
@@ -171,7 +143,6 @@ async def make_contact(db):
             category=category,
             context=context,
             notes=notes,
-            tenant_id=TENANT_ID,
         )
 
     return _make
@@ -196,7 +167,6 @@ async def make_interaction(db):
             interaction_type=interaction_type,
             summary=summary,
             occurred_at=occurred_at or datetime.now(UTC),
-            tenant_id=TENANT_ID,
         )
 
     return _make
@@ -219,7 +189,6 @@ async def make_task(db):
             contact_id=contact_id,
             due_date=due_date,
             description=description,
-            tenant_id=TENANT_ID,
         )
 
     return _make
