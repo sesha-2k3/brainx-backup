@@ -14,7 +14,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.db.queries import interactions as interaction_queries
-from tests.conftest import TENANT_ID
 
 
 @pytest.mark.asyncio
@@ -41,7 +40,7 @@ class TestInteractionSearch:
         await make_interaction(contact.id, summary="Discussed blockchain strategy")
         await make_interaction(contact.id, summary="Coffee chat about family")
 
-        results = await interaction_queries.search_interactions(db, "blockchain", TENANT_ID)
+        results = await interaction_queries.search_interactions(db, "blockchain")
         assert len(results) >= 1
         assert any("blockchain" in r.summary.lower() for r in results)
 
@@ -51,9 +50,7 @@ class TestInteractionSearch:
         await make_interaction(c1.id, summary="Topic alpha")
         await make_interaction(c2.id, summary="Topic alpha too")
 
-        results = await interaction_queries.search_interactions(
-            db, "alpha", TENANT_ID, contact_id=c1.id
-        )
+        results = await interaction_queries.search_interactions(db, "alpha", contact_id=c1.id)
         assert len(results) == 1
 
 
@@ -102,7 +99,7 @@ class TestRecentInteractions:
         )
 
         results = await interaction_queries.list_recent_interactions(
-            db, TENANT_ID, since=now - timedelta(days=7)
+            db, since=now - timedelta(days=7)
         )
         summaries = [r.summary for r in results]
         assert "Recent" in summaries
