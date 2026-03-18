@@ -1,13 +1,12 @@
-# Database: Tenant-aware async sessions
-#
-# How it works:
-#   1. TenantMixin marks which models are tenant-scoped
-#   2. TenantSession carries a tenant_id
-#   3. do_orm_execute event auto-appends WHERE tenant_id = :id to every SELECT
-#   4. before_flush event auto-sets tenant_id on every new object
-#
-# Developers can't forget the filter — it's enforced at the infrastructure level.
-# Query functions no longer need to accept or filter by tenant_id.
+"""
+Database: Tenant-aware async sessions
+
+How it works:
+   1. TenantMixin marks which models are tenant-scoped
+   2. TenantSession carries a tenant_id
+   3. do_orm_execute event auto-appends WHERE tenant_id = :id to every SELECT
+   4. before_flush event auto-sets tenant_id on every new object
+"""
 
 from collections.abc import AsyncGenerator
 

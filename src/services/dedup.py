@@ -1,4 +1,6 @@
-# Service: Contact deduplication using exact email/phone matching
+"""
+Service: Contact deduplication using exact email/phone matching
+"""
 
 import logging
 

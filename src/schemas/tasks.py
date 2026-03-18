@@ -1,4 +1,6 @@
-# Schemas: Pydantic models for tasks and reminders
+"""
+Schemas: Pydantic models for tasks and reminders
+"""
 
 from datetime import datetime
 

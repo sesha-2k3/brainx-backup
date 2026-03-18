@@ -34,9 +34,7 @@ router = APIRouter(prefix="/api", tags=["web"])
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 
-# ============================================================================
-# Request/Response models (web.py-specific, not shared with other modules)
-# ============================================================================
+# Request/Response models (web module specific)
 
 
 class TextInput(BaseModel):

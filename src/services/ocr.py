@@ -1,4 +1,6 @@
-# Service: OCR processing for business cards using Tesseract
+"""
+Service: OCR processing for business cards using Tesseract
+"""
 
 import asyncio
 import io

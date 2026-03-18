@@ -1,4 +1,6 @@
-# Schemas: Pydantic models for proposals and confirmation cards
+"""
+Schemas: Pydantic models for proposals and confirmation cards
+"""
 
 from datetime import datetime
 

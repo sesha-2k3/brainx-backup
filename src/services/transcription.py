@@ -1,4 +1,6 @@
-# Service: Audio transcription using Groq Whisper API
+"""
+Service: Audio transcription using Groq Whisper API.
+"""
 
 import asyncio
 import logging

@@ -1,4 +1,6 @@
-# Service: LLM-based extraction of contact and interaction data
+"""
+Service: LLM-based extraction of contact and interaction data
+"""
 
 import asyncio
 import json
