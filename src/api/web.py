@@ -166,7 +166,7 @@ async def process_file_input(
     if not extracted or not extracted.name:
         raise HTTPException(status_code=400, detail="Could not extract contact data from file")
 
-    duplicate = await find_duplicate(db, extracted, settings.tenant_id)
+    duplicate = await find_duplicate(db, extracted)
 
     proposal = await proposal_queries.create_proposal(
         db,
