@@ -30,7 +30,7 @@ function EyeOffIcon() {
 
 // ── Reusable show/hide password field ────────────────────────────────────────
 
-function PasswordInput({ id, value, onChange, onBlur, autoComplete, placeholder, hasError }) {
+function PasswordInput({ id, value, onChange, onFocus, onBlur, autoComplete, placeholder, hasError }) {
   const [visible, setVisible] = useState(false)
   return (
     <div className="relative">
@@ -41,6 +41,7 @@ function PasswordInput({ id, value, onChange, onBlur, autoComplete, placeholder,
         required
         value={value}
         onChange={onChange}
+        onFocus={onFocus}
         onBlur={onBlur}
         placeholder={placeholder}
         className={`input pr-10 ${hasError ? 'border-red-400 focus:border-red-400 dark:border-red-500' : ''}`}
@@ -80,8 +81,12 @@ export default function LoginPage() {
   const navigate     = useNavigate()
   const location     = useLocation()
   const from         = location.state?.from?.pathname || '/'
-  const emailRef     = useRef(null)
-  const formRef      = useRef(null)
+  const emailRef        = useRef(null)
+  const formRef         = useRef(null)
+  // Tracks whether the user has manually focused a field.
+  // Auto-focus on mount triggers a blur when clicking away (e.g. "Create one")
+  // before the user has typed anything — we ignore that first phantom blur.
+  const userFocused     = useRef({ email: false, password: false })
 
   const [email,        setEmail]        = useState('')
   const [password,     setPassword]     = useState('')
@@ -103,7 +108,15 @@ export default function LoginPage() {
     formRef.current?.classList.add('shake')
   }
 
+  function handleFocus(field) {
+    userFocused.current[field] = true
+  }
+
   function handleBlur(field) {
+    // Ignore blur if the user never manually focused this field —
+    // prevents the auto-focused email field from showing an error
+    // when the user clicks a navigation link before typing anything.
+    if (!userFocused.current[field]) return
     setTouched(t => ({ ...t, [field]: true }))
   }
 
@@ -165,6 +178,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                onFocus={() => handleFocus('email')}
                 onBlur={() => handleBlur('email')}
                 placeholder="you@example.com"
                 className={`input ${emailError ? 'border-red-400 focus:border-red-400 dark:border-red-500' : ''}`}
@@ -193,6 +207,7 @@ export default function LoginPage() {
                 id="login-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                onFocus={() => handleFocus('password')}
                 onBlur={() => handleBlur('password')}
                 autoComplete="current-password"
                 placeholder="••••••••"
