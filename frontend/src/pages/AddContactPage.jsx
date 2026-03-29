@@ -30,7 +30,7 @@ function AddContactPage() {
     setError(null)
 
     try {
-      const response = await fetch('/api/contacts', {
+      const response = await fetch('/brainx/api/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

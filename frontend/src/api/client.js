@@ -1,6 +1,6 @@
 // API: Client functions for backend communication
 
-const API_BASE = '/api'
+const API_BASE = '/brainx/api'
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`
