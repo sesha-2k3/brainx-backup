@@ -39,7 +39,7 @@ function CheckIcon() {
 
 // ── Password input with show/hide ────────────────────────────────────────────
 
-function PasswordInput({ id, value, onChange, onBlur, autoComplete, placeholder, hasError }) {
+function PasswordInput({ id, value, onChange, onFocus, onBlur, autoComplete, placeholder, hasError }) {
   const [visible, setVisible] = useState(false)
   return (
     <div className="relative">
@@ -50,6 +50,7 @@ function PasswordInput({ id, value, onChange, onBlur, autoComplete, placeholder,
         required
         value={value}
         onChange={onChange}
+        onFocus={onFocus}
         onBlur={onBlur}
         placeholder={placeholder}
         className={`input pr-10 ${hasError ? 'border-red-400 focus:border-red-400 dark:border-red-500' : ''}`}
@@ -151,6 +152,7 @@ export default function RegisterPage() {
   const navigate      = useNavigate()
   const emailRef      = useRef(null)
   const formRef       = useRef(null)
+  const userFocused   = useRef({ email: false, password: false, confirm: false })
 
   const [email,        setEmail]        = useState('')
   const [password,     setPassword]     = useState('')
@@ -175,7 +177,12 @@ export default function RegisterPage() {
     formRef.current?.classList.add('shake')
   }
 
+  function handleFocus(field) {
+    userFocused.current[field] = true
+  }
+
   function handleBlur(field) {
+    if (!userFocused.current[field]) return
     setTouched(t => ({ ...t, [field]: true }))
   }
 
@@ -240,6 +247,7 @@ export default function RegisterPage() {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                onFocus={() => handleFocus('email')}
                 onBlur={() => handleBlur('email')}
                 placeholder="you@example.com"
                 className={`input ${emailError ? 'border-red-400 focus:border-red-400 dark:border-red-500' : ''}`}
@@ -258,6 +266,7 @@ export default function RegisterPage() {
                 id="reg-password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                onFocus={() => handleFocus('password')}
                 onBlur={() => handleBlur('password')}
                 autoComplete="new-password"
                 placeholder="••••••••"
@@ -278,6 +287,7 @@ export default function RegisterPage() {
                 id="reg-confirm"
                 value={confirm}
                 onChange={e => setConfirm(e.target.value)}
+                onFocus={() => handleFocus('confirm')}
                 onBlur={() => handleBlur('confirm')}
                 autoComplete="new-password"
                 placeholder="••••••••"
