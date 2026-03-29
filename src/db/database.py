@@ -24,7 +24,7 @@ _engine_kwargs: dict = {
     "echo": settings.is_development,
 }
 
-if not settings.database_url.startswith("sqlite"):
+if "sqlite" not in settings.database_url:
     _engine_kwargs.update(
         {
             "pool_pre_ping": True,
