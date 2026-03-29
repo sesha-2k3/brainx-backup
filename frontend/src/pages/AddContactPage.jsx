@@ -52,7 +52,7 @@ function AddContactPage() {
       } else {
         // Purely manual entry — create contact directly
         const token = tokenStorage.get()
-        const response = await fetch('/api/contacts', {
+        const response = await fetch('/brainx/api/contacts', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

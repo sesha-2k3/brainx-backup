@@ -2,7 +2,7 @@
 // These do NOT go through the shared request() helper because they must
 // work without a token (and they handle the token themselves).
 
-const API_BASE = '/api'
+const API_BASE = '/brainx/api'
 
 async function authRequest(endpoint, body) {
   const response = await fetch(`${API_BASE}${endpoint}`, {

@@ -1,6 +1,6 @@
 // API: Client functions for backend communication
 
-const API_BASE = '/api'
+const API_BASE = '/brainx/api'
 
 // ── Token storage ─────────────────────────────────────────────────────────────
 // A thin wrapper so the rest of the app never touches localStorage directly.

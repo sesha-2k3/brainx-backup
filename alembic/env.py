@@ -11,7 +11,7 @@ from alembic import context
 
 # Import models so Alembic can detect them
 from src.db.database import Base
-from src.db.models import Contact, Interaction, Proposal, Task, Artifact, Job
+from src.db.models import Contact, Interaction, Proposal, Task
 from src.config import get_settings
 
 config = context.config
