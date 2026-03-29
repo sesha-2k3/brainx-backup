@@ -35,6 +35,35 @@ class TaskStatus(enum.StrEnum):
     CANCELLED = "cancelled"
 
 
+# ─────────────────────────────────────────────
+# Auth: User is app-level, NOT tenant-scoped.
+# One user account can access any tenant that
+# is assigned to them (future work).
+# ─────────────────────────────────────────────
+
+
+class User(Base):
+    """Application user for email/password authentication."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<User id={self.id} email={self.email}>"
+
+
 # Models
 class Contact(TenantMixin, Base):
     __tablename__ = "contacts"
