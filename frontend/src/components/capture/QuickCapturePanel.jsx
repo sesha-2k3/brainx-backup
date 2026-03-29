@@ -115,6 +115,9 @@ function QuickCapturePanel({ isOpen, onClose, onSuccess }) {
       })
       onSuccess?.()
       onClose()
+      // Navigate to /contacts so the list remounts and shows the new contact.
+      // Using navigate(0) would also work but causes a full page reload.
+      navigate('/contacts')
     } catch (err) {
       setError(err.message || 'Failed to save')
     } finally {
@@ -123,9 +126,10 @@ function QuickCapturePanel({ isOpen, onClose, onSuccess }) {
   }
 
   const handleViewDetails = () => {
-    // Navigate to full add contact page with extracted data
+    // Capture values before onClose() wipes them via the isOpen=false effect
+    const snapshot = { extracted, proposalId }
+    navigate('/add-contact', { state: snapshot })
     onClose()
-    navigate('/', { state: { extracted, proposalId } })
   }
 
   if (!isOpen) return null
