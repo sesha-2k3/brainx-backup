@@ -35,15 +35,11 @@ class TaskStatus(enum.StrEnum):
     CANCELLED = "cancelled"
 
 
-# ─────────────────────────────────────────────
-# Auth: User is app-level, NOT tenant-scoped.
-# One user account can access any tenant that
-# is assigned to them (future work).
-# ─────────────────────────────────────────────
+# Models
 
 
 class User(Base):
-    """Application user for email/password authentication."""
+    """Application user — not tenant-scoped, IS the tenant source."""
 
     __tablename__ = "users"
 
@@ -52,26 +48,24 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    def __repr__(self) -> str:
-        return f"<User id={self.id} email={self.email}>"
 
-
-# Models
 class Contact(TenantMixin, Base):
     __tablename__ = "contacts"
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
     )
-    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     # Core fields
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -101,9 +95,6 @@ class Contact(TenantMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Full-text search
-    search_vector: Mapped[str | None] = mapped_column(Text, nullable=True)
-
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -122,6 +113,7 @@ class Contact(TenantMixin, Base):
         Index("idx_contacts_tenant", "tenant_id"),
         Index("idx_contacts_email", "email"),
         Index("idx_contacts_phone", "phone"),
+        Index("idx_contacts_tenant_created", "tenant_id", "created_at"),
     )
 
 
@@ -134,7 +126,11 @@ class Interaction(TenantMixin, Base):
     contact_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False
     )
-    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     # Content
     interaction_type: Mapped[str] = mapped_column(
@@ -147,11 +143,11 @@ class Interaction(TenantMixin, Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    # Full-text search
-    search_vector: Mapped[str | None] = mapped_column(Text, nullable=True)
-
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     # Relationships
     contact: Mapped["Contact"] = relationship(back_populates="interactions")
@@ -160,6 +156,7 @@ class Interaction(TenantMixin, Base):
         Index("idx_interactions_contact", "contact_id"),
         Index("idx_interactions_tenant", "tenant_id"),
         Index("idx_interactions_occurred", "occurred_at"),
+        Index("idx_interactions_tenant_created", "tenant_id", "created_at"),
     )
 
 
@@ -169,7 +166,11 @@ class Proposal(TenantMixin, Base):
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
     )
-    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     # Source info
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # voice, text, image
@@ -212,7 +213,11 @@ class Task(TenantMixin, Base):
     contact_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
 
     # Task details
     title: Mapped[str] = mapped_column(String(500), nullable=False)
