@@ -14,7 +14,11 @@ async function authRequest(endpoint, body) {
   const data = await response.json().catch(() => ({ detail: 'Request failed' }))
 
   if (!response.ok) {
-    throw new Error(data.detail || 'Request failed')
+    const detail = data.detail
+    const message = Array.isArray(detail)
+      ? detail.map(e => e.msg.replace('Value error, ', '')).join(', ')
+      : detail || 'Request failed'
+    throw new Error(message)
   }
 
   return data
