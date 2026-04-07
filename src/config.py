@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     tenant_id: str = "default"
 
-    # Auth — generate a strong secret with: openssl rand -hex 32
-    jwt_secret: str = "change-me-in-production"
+    # Auth — generate secret with: openssl rand -hex 32
+    jwt_secret: str = "in-env"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 
