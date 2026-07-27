@@ -86,7 +86,11 @@ async def process_text_input(
         db,
         source_type="text",
         whatsapp_user_id="web",
-        extracted_data=extracted.model_dump(),
+        # raw_text preserved alongside the LLM's structured output so it can
+        # later be attached to the Interaction as raw_transcript - without
+        # this, the user's original wording is discarded the moment
+        # extraction runs and can never be recovered.
+        extracted_data={**extracted.model_dump(), "raw_text": text},
     )
 
     # Convert tasks to list of dicts
@@ -144,16 +148,19 @@ async def process_file_input(
     extracted = None
     confidence = None
     source_type = "file"
+    raw_text = None
 
     if content_type.startswith("audio/"):
         result = await transcribe_audio_bytes(content, file.filename or "audio.ogg")
-        extracted = await extract_contact_data(result["text"])
+        raw_text = result["text"]
+        extracted = await extract_contact_data(raw_text)
         source_type = "voice"
 
     elif content_type.startswith("image/"):
         result = await process_business_card_bytes(content)
         extracted = result["extracted"]
         confidence = result["confidence"]
+        raw_text = result["raw_text"]
         source_type = "business_card"
 
     else:
@@ -170,7 +177,9 @@ async def process_file_input(
         db,
         source_type=source_type,
         whatsapp_user_id="web",
-        extracted_data=extracted.model_dump(),
+        # Same as process_text_input - carry the transcript/OCR text through
+        # so it can become the Interaction's raw_transcript on confirm.
+        extracted_data={**extracted.model_dump(), "raw_text": raw_text},
         confidence_score=confidence,
     )
 
@@ -219,7 +228,13 @@ async def confirm_proposal(
     if not proposal:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
-    extracted = ExtractedContactData(**proposal.extracted_data)
+    # raw_text was stashed alongside the LLM's structured fields when the
+    # proposal was created - pop it out before reconstructing
+    # ExtractedContactData so it isn't treated as (and possibly rejected as)
+    # one of that model's own fields.
+    extracted_data = dict(proposal.extracted_data)
+    raw_text = extracted_data.pop("raw_text", None)
+    extracted = ExtractedContactData(**extracted_data)
     duplicate = await find_duplicate(db, extracted)
 
     if duplicate:
@@ -255,6 +270,9 @@ async def confirm_proposal(
             interaction_type="note",
             summary=data.interaction_summary,
             occurred_at=datetime.now(UTC),
+            # The user's original wording, preserved for the "View
+            # Transcription" panel on the contact detail page.
+            raw_transcript=raw_text,
         )
 
     created_tasks = []
@@ -422,6 +440,7 @@ async def get_contact(
                 "interaction_type": i.interaction_type,
                 "summary": i.summary,
                 "occurred_at": i.occurred_at.isoformat(),
+                "raw_transcript": i.raw_transcript,
             }
             for i in interactions
         ],
