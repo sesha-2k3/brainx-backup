@@ -60,6 +60,7 @@ class ProposalConfirmData(BaseModel):
     phone: str | None = None
     company: str | None = None
     role: str | None = None
+    website: str | None = None
     category: str | None = None
     context: str | None = None
     interaction_summary: str | None = None
@@ -108,6 +109,7 @@ async def process_text_input(
             "phone": extracted.phone,
             "company": extracted.company,
             "role": extracted.role,
+            "website": extracted.website,
             "category": extracted.category,
             "context": extracted.context,
             "interaction_summary": extracted.interaction_summary,
@@ -248,6 +250,8 @@ async def confirm_proposal(
             updates["company"] = data.company
         if data.role and not contact.role:
             updates["role"] = data.role
+        if data.website and not contact.website:
+            updates["website"] = data.website
         if updates:
             await contact_queries.update_contact(db, contact.id, **updates)
     else:
@@ -258,6 +262,7 @@ async def confirm_proposal(
             phone=data.phone,
             company=data.company,
             role=data.role,
+            website=data.website,
             category=data.category,
             context=data.context,
         )
@@ -346,6 +351,7 @@ async def list_contacts(
                 "phone": c.phone,
                 "company": c.company,
                 "role": c.role,
+                "website": c.website,
                 "category": c.category,
                 "reminder_frequency": c.reminder_frequency,
                 "next_reminder_at": c.next_reminder_at.isoformat() if c.next_reminder_at else None,
@@ -428,6 +434,7 @@ async def get_contact(
             "phone": contact.phone,
             "company": contact.company,
             "role": contact.role,
+            "website": contact.website,
             "category": contact.category,
             "notes": contact.notes,
             "context": contact.context,
@@ -460,6 +467,7 @@ async def create_contact_direct(
         phone=data.phone,
         company=data.company,
         role=data.role,
+        website=data.website,
         category=data.category,
         context=data.context,
         notes=data.notes,
@@ -497,6 +505,7 @@ async def update_contact(
             "phone": contact.phone,
             "company": contact.company,
             "role": contact.role,
+            "website": contact.website,
             "category": contact.category,
             "notes": contact.notes,
             "context": contact.context,
