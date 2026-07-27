@@ -364,6 +364,31 @@ async def get_due_reminders(
     }
 
 
+@router.get("/contacts/upcoming-reminders")
+async def get_upcoming_reminders(
+    limit: int = Query(default=10, le=50),
+    db: AsyncSession = Depends(get_db_for_user),
+):
+    """
+    Get contacts with a reminder scheduled for the future (not yet due),
+    soonest first. Powers the "Upcoming" side panel on the Reminders page.
+    """
+    contacts = await contact_queries.get_upcoming_reminders(db, limit=limit)
+
+    return {
+        "contacts": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "company": c.company,
+                "reminder_frequency": c.reminder_frequency,
+                "next_reminder_at": c.next_reminder_at.isoformat() if c.next_reminder_at else None,
+            }
+            for c in contacts
+        ]
+    }
+
+
 @router.get("/contacts/{contact_id}")
 async def get_contact(
     contact_id: str,
