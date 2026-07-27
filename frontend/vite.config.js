@@ -10,7 +10,7 @@ export default defineConfig({
     allowedHosts: ['dev.internal.kronosx.ai'],
     proxy: {
       '/brainx/api': {
-        target: 'http://localhost:8002',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/brainx/, ''),
       },
