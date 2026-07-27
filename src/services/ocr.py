@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 # Threadpool for blocking OCR operations.
 _executor = ThreadPoolExecutor(max_workers=4)
 
-# Common patterns for extraction
-EMAIL_PATTERN = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
-PHONE_PATTERN = re.compile(
-    r"[\+]?[(]?[0-9]{1,3}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}"
-)
+# URL isn't part of ExtractedContactData yet (flagged as a future field in the
+# original code) - kept here since it's OCR-specific metadata, not something
+# extract_contact_data() returns. Email/phone regex now lives in
+# src/utils/phone.py and src/utils/text.py and is applied once, inside
+# extract_contact_data() itself - no need to duplicate or merge it here.
 URL_PATTERN = re.compile(r"https?://[^\s]+|www\.[^\s]+")
 
 
@@ -61,22 +61,18 @@ async def process_business_card(file_path: str) -> dict:
     confidences = [c for c in ocr_data["conf"] if c > 0]
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0
 
-    # Quick regex extraction as fallback
-    quick_extract = _quick_extract(raw_text)
-
-    # Use LLM for better extraction
+    # extract_contact_data() already runs the email/phone regex pass
+    # internally (on the full raw_text) before ever calling the LLM - no
+    # separate quick-extract/merge step needed here anymore.
     extracted = await extract_contact_data(raw_text)
 
-    # Merge quick extract for any missing fields
-    if not extracted.email and quick_extract.get("email"):
-        extracted.email = quick_extract["email"]
-    if not extracted.phone and quick_extract.get("phone"):
-        extracted.phone = quick_extract["phone"]
+    urls = URL_PATTERN.findall(raw_text)
 
     return {
         "raw_text": raw_text,
         "confidence": avg_confidence,
         "extracted": extracted,
+        "url": urls[0] if urls else None,
     }
 
 
@@ -89,42 +85,12 @@ async def process_business_card_bytes(image_bytes: bytes) -> dict:
     # Run blocking OCR in thread pool
     raw_text, confidence = await loop.run_in_executor(_executor, _run_ocr_sync, image_bytes)
 
-    quick_extract = _quick_extract(raw_text)
     extracted = await extract_contact_data(raw_text)
-
-    if not extracted.email and quick_extract.get("email"):
-        extracted.email = quick_extract["email"]
-    if not extracted.phone and quick_extract.get("phone"):
-        extracted.phone = quick_extract["phone"]
+    urls = URL_PATTERN.findall(raw_text)
 
     return {
         "raw_text": raw_text,
         "confidence": confidence,
         "extracted": extracted,
+        "url": urls[0] if urls else None,
     }
-
-
-def _quick_extract(text: str) -> dict:
-    """
-    Quick regex-based extraction as fallback.
-    """
-    result = {}
-
-    # Extract email
-    emails = EMAIL_PATTERN.findall(text)
-    if emails:
-        result["email"] = emails[0].lower()
-
-    # Extract phone
-    phones = PHONE_PATTERN.findall(text)
-    if phones:
-        # Clean up phone number
-        phone = re.sub(r"[^\d+]", "", phones[0])
-        result["phone"] = phone
-
-    # Extract URL (feature to be added in future)
-    urls = URL_PATTERN.findall(text)
-    if urls:
-        result["url"] = urls[0]
-
-    return result

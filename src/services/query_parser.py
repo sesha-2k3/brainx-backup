@@ -2,14 +2,22 @@
 """
 Purpose: Natural language query router that classifies user search intent and extracts structured filters using LLM.
 
-Status: Implemented but not wired up. Ready to use when you want smarter search routing.
+Status: Now wired into GET /api/search (see src/api/web.py). This replaces the
+        old behavior of always loading up to 100 contacts and calling the
+        heavier semantic_search_with_explanation() LLM call for every query.
+
+        parse_query() below is still an LLM call - classifying intent isn't
+        something regex can do - but it's a much lighter one (~200 tokens vs
+        a full contact dump), and its output routes most queries straight to
+        SQL. semantic_search_with_explanation() is only reached now for the
+        `fts_search` fallback intent (genuinely fuzzy/unclassifiable queries).
 
 Functions:
 
 | Function | Description |
 |----------|-------------|
 | `parse_query(query)` | Sends query to Groq LLM, returns `{intent, filters}` |
-| `_resolve_dates(filters)` | Converts relative dates (`"today"`, `"30_days_ago"`) to ISO strings |
+| `_resolve_dates(filters)` | Converts relative dates (`"today"`, `"30_days_ago"`, or any phrase parse_relative_date understands) to ISO strings |
 | `format_search_results(results, query)` | Formats results as human-readable text (for WhatsApp) |
 
 **Intents supported:**
@@ -18,10 +26,6 @@ Functions:
 - `task_query` — "What's due today?"
 - `interaction_search` — "What did we discuss with BCBS?"
 - `fts_search` — Fallback for general queries
-
-Future use: Wire into `/api/search` endpoint to route queries to specialized handlers instead of always using semantic search.
-            Would reduce LLM costs and improve response times for simple queries like "tasks due today"
-            (no need to load all contacts and call LLM).
 """
 
 import json
@@ -30,6 +34,7 @@ from datetime import UTC, datetime, timedelta
 
 from src.config import get_settings
 from src.services.groq_client import get_groq_client
+from src.utils.dates import parse_relative_date
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +118,11 @@ async def parse_query(query: str) -> dict:
 def _resolve_dates(filters: dict) -> dict:
     """
     Resolve relative date strings to actual dates.
+
+    Handles the common phrases explicitly, then falls back to
+    parse_relative_date() (already used elsewhere for task due-dates) for
+    anything else the LLM returns - so an unusual phrase like "next Friday"
+    still resolves deterministically instead of being silently dropped.
     """
     today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -120,15 +130,25 @@ def _resolve_dates(filters: dict) -> dict:
     if "date_range" in filters:
         date_range = filters["date_range"]
 
-        if date_range.get("start") == "30_days_ago":
+        start = date_range.get("start")
+        if start == "30_days_ago":
             date_range["start"] = (today - timedelta(days=30)).isoformat()
-        elif date_range.get("start") == "7_days_ago":
+        elif start == "7_days_ago":
             date_range["start"] = (today - timedelta(days=7)).isoformat()
-        elif date_range.get("start") == "this_month":
+        elif start == "this_month":
             date_range["start"] = today.replace(day=1).isoformat()
+        elif start and start not in ("today",):
+            resolved = parse_relative_date(start)
+            if resolved:
+                date_range["start"] = resolved.isoformat()
 
-        if date_range.get("end") == "today":
+        end = date_range.get("end")
+        if end == "today":
             date_range["end"] = today.isoformat()
+        elif end and end != date_range.get("start"):
+            resolved = parse_relative_date(end)
+            if resolved:
+                date_range["end"] = resolved.isoformat()
 
         filters["date_range"] = date_range
 
@@ -144,6 +164,10 @@ def _resolve_dates(filters: dict) -> dict:
         elif due == "overdue":
             filters["due_by"] = today.isoformat()
             filters["overdue"] = True
+        else:
+            resolved = parse_relative_date(due)
+            if resolved:
+                filters["due_by"] = resolved.isoformat()
 
     return filters
 

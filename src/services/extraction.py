@@ -1,5 +1,15 @@
 """
-Service: LLM-based extraction of contact and interaction data
+Service: Hybrid extraction of contact and interaction data.
+
+Deterministic first, LLM only for what regex genuinely can't do:
+  - email / phone   -> regex only, LLM is never asked for these anymore
+  - category        -> keyword match first; LLM only used as a fallback
+                        guess, and even then clamped to the enum
+  - name / company / role / context / interaction_summary / tasks
+                        -> LLM (open-ended language understanding, no
+                        deterministic substitute)
+  - task due_date    -> LLM extracts the phrase, parse_relative_date()
+                        resolves it downstream (unchanged, already correct)
 """
 
 import asyncio
@@ -16,12 +26,23 @@ from tenacity import (
 from src.config import get_settings
 from src.schemas.contacts import ExtractedContactData
 from src.services.groq_client import get_groq_client
-from src.utils.text import parse_llm_json
+from src.utils.category import clamp_category, match_category_keywords
+from src.utils.phone import extract_phones
+from src.utils.text import extract_emails, parse_llm_json
 
 logger = logging.getLogger(__name__)
 
 MAX_EXTRACTION_TEXT_LENGTH = 6_000
 EXTRACTION_TIMEOUT = 30.0
+
+# NOTE: email, phone, and category are intentionally absent from what we ask
+# the LLM to find. Email/phone come from regex (extract_emails / extract_phones)
+# run on the *full* untruncated text before this prompt is even built - the
+# LLM would just be re-deriving something a pattern already gets exactly
+# right, at the cost of tokens, latency, and a small hallucination surface.
+# Category is asked for here only as a fallback for when a deterministic
+# keyword match (match_category_keywords) doesn't find one - its output is
+# clamped against the enum afterwards either way.
 EXTRACTION_PROMPT = """Extract contact information and ALL tasks/follow-ups from this text.
 
 TEXT:
@@ -29,11 +50,9 @@ TEXT:
 
 Return a JSON object with these fields:
 - name: Full name of the person
-- email: Email address (or null)
-- phone: Phone number (or null)
 - company: Company/organization name (or null)
 - role: Job title/role (or null)
-- category: One of: investor, client, partner, friend, family, colleague, other (or null)
+- category: Best guess, one of: investor, client, partner, friend, family, colleague, other (or null if unclear)
 - context: How/where you met this person (or null)
 - interaction_summary: Brief summary of the conversation/interaction (or null)
 - tasks: Array of tasks/follow-ups extracted. Each task has:
@@ -43,7 +62,6 @@ Return a JSON object with these fields:
 Example output:
 {{
   "name": "John Smith",
-  "email": "john@acme.com",
   "company": "Acme Corp",
   "role": "VP Sales",
   "category": "client",
@@ -72,30 +90,41 @@ class ExtractionError(Exception):
 )
 async def extract_contact_data(text: str) -> ExtractedContactData:
     """
-    Extract structured contact data from free-form text using LLM.
+    Extract structured contact data from free-form text.
+
+    Deterministic (regex) fields are pulled from the full text first. The
+    LLM is only used for the fields that genuinely require open-ended
+    language understanding, and only sees a possibly-truncated copy of the
+    text for that part.
 
     Raises:
         ExtractionError: If extraction fails after retries
     """
     settings = get_settings()
 
-    # Limit input size
+    # --- Deterministic pass: runs on the full, untruncated text --------------
+    emails = extract_emails(text)
+    phones = extract_phones(text)
+    keyword_category = match_category_keywords(text)
+
+    # --- LLM pass: only for name / company / role / context / summary / tasks,
+    # and category as a fallback guess if no keyword matched -----------------
+    llm_text = text
     if len(text) > MAX_EXTRACTION_TEXT_LENGTH:
         logger.warning(f"Text truncated from {len(text)} to {MAX_EXTRACTION_TEXT_LENGTH} chars")
-        text = text[:MAX_EXTRACTION_TEXT_LENGTH]
+        llm_text = text[:MAX_EXTRACTION_TEXT_LENGTH]
 
-    logger.info(f"Extracting data from text: {len(text)} chars")
+    logger.info(f"Extracting data from text: {len(llm_text)} chars (LLM portion)")
 
     client = get_groq_client()
 
-    # Call LLM with timeout
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
                 model=settings.groq_llm_model,
-                messages=[{"role": "user", "content": EXTRACTION_PROMPT.format(text=text)}],
+                messages=[{"role": "user", "content": EXTRACTION_PROMPT.format(text=llm_text)}],
                 temperature=0.1,
-                max_tokens=500,
+                max_tokens=400,  # was 500 - prompt shrank, response shrinks too
             ),
             timeout=EXTRACTION_TIMEOUT,
         )
@@ -105,10 +134,22 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
 
     content = response.choices[0].message.content.strip()
 
-    # Parse JSON response
     try:
         data = parse_llm_json(content)
         extracted = ExtractedContactData(**data)
+
+        # Deterministic fields always win - the LLM was never even asked, so
+        # there's nothing to reconcile, just attach the regex results.
+        extracted.email = emails[0] if emails else None
+        extracted.phone = phones[0] if phones else None
+
+        # Category: trust the keyword match over anything the LLM guessed.
+        # If there was no keyword match, fall back to the LLM's guess - but
+        # clamp it to the enum so a hallucinated value can never land in the DB.
+        if keyword_category is not None:
+            extracted.category = keyword_category.value
+        else:
+            extracted.category = clamp_category(extracted.category)
 
         if not extracted.name:
             raise ExtractionError("No name extracted from text")

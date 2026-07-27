@@ -742,12 +742,119 @@ async def delete_interaction(
 # Search Endpoint
 
 
+def _serialize_contacts_brief(contacts: list[Contact]) -> list[dict]:
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "company": c.company,
+            "role": c.role,
+            "category": c.category,
+        }
+        for c in contacts
+    ]
+
+
+def _serialize_tasks_brief(tasks: list) -> list[dict]:
+    return [
+        {
+            "id": t.id,
+            "title": t.title,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "status": t.status,
+            "contact_id": t.contact_id,
+            "contact_name": t.contact.name if t.contact else None,
+        }
+        for t in tasks
+    ]
+
+
+def _serialize_interactions_brief(interactions: list) -> list[dict]:
+    return [
+        {
+            "id": i.id,
+            "contact_id": i.contact_id,
+            "summary": i.summary,
+            "occurred_at": i.occurred_at.isoformat(),
+        }
+        for i in interactions
+    ]
+
+
 @router.get("/search")
 async def search(
     q: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db_for_user),
 ):
-    """Semantic search across contacts using LLM."""
+    """
+    Search across contacts, interactions, and tasks.
+
+    Routes through query_parser.parse_query() first - a lightweight LLM
+    intent-classification call - then handles the four literal intents
+    (contact_lookup, filtered_list, task_query, interaction_search) with
+    plain SQL, no further LLM involvement. Only the fts_search fallback
+    intent (genuinely fuzzy/unclassifiable queries) reaches the heavier
+    semantic_search_with_explanation() call that used to run for every
+    single query, including things as literal as "tasks due today".
+    """
+    from src.services.query_parser import parse_query
+
+    parsed = await parse_query(q)
+    intent = parsed.get("intent", "fts_search")
+    filters = parsed.get("filters", {})
+
+    empty_result = {
+        "query": q,
+        "intent": intent,
+        "explanation": "",
+        "contacts": [],
+        "interactions": [],
+        "tasks": [],
+    }
+
+    if intent == "contact_lookup" and filters.get("name"):
+        contacts = await contact_queries.search_contacts_by_name(db, filters["name"])
+        return {**empty_result, "contacts": _serialize_contacts_brief(contacts)}
+
+    if intent == "filtered_list" and filters.get("category"):
+        since = None
+        date_range = filters.get("date_range") or {}
+        if date_range.get("start"):
+            try:
+                since = datetime.fromisoformat(date_range["start"])
+            except ValueError:
+                since = None
+        contacts = await search_queries.get_contacts_by_category(
+            db, filters["category"], since=since
+        )
+        return {**empty_result, "contacts": _serialize_contacts_brief(contacts)}
+
+    if intent == "task_query":
+        due_by = filters.get("due_by")
+        if due_by:
+            try:
+                tasks = await task_queries.list_tasks_due_by(db, datetime.fromisoformat(due_by))
+            except ValueError:
+                tasks = await task_queries.list_pending_tasks(db, limit=50)
+        else:
+            tasks = await task_queries.list_pending_tasks(db, limit=50)
+        return {**empty_result, "tasks": _serialize_tasks_brief(tasks)}
+
+    if intent == "interaction_search" and filters.get("company"):
+        since = None
+        date_range = filters.get("date_range") or {}
+        if date_range.get("start"):
+            try:
+                since = datetime.fromisoformat(date_range["start"])
+            except ValueError:
+                since = None
+        interactions = await search_queries.get_interactions_by_company(
+            db, filters["company"], since=since
+        )
+        return {**empty_result, "interactions": _serialize_interactions_brief(interactions)}
+
+    # fts_search, or a literal intent without the filter it needed - fall
+    # back to the existing LLM semantic search over recent contacts.
     from src.services.semantic_search import semantic_search_with_explanation
 
     result = await db.execute(
