@@ -310,6 +310,18 @@ function ContactDetailPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Website
+              </label>
+              <input
+                type="text"
+                value={editForm.website || ''}
+                onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
+                className="input"
+                placeholder="https://..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
                 Category
               </label>
               <select
@@ -377,6 +389,20 @@ function ContactDetailPage() {
                 </a>
               </div>
             )}
+            {contact.website && (
+              <div>
+                <p className="text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Website</p>
+                <a
+                  href={contact.website.startsWith('http') ? contact.website : `https://${contact.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium hover:underline truncate block"
+                  style={{ color: 'var(--color-primary)' }}
+                >
+                  {contact.website}
+                </a>
+              </div>
+            )}
             {contact.category && (
               <div>
                 <p className="text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Category</p>
@@ -403,7 +429,7 @@ function ContactDetailPage() {
                 <p style={{ color: 'var(--color-text)' }}>{contact.notes}</p>
               </div>
             )}
-            {!contact.email && !contact.phone && !contact.category && !contact.context && !contact.notes && (
+            {!contact.email && !contact.phone && !contact.website && !contact.category && !contact.context && !contact.notes && (
               <div className="md:col-span-2 text-center py-4" style={{ color: 'var(--color-text-muted)' }}>
                 No additional details. Click "Edit" to add more information.
               </div>

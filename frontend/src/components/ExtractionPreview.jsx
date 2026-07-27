@@ -17,6 +17,7 @@ function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
     phone: data.phone || '',
     company: data.company || '',
     role: data.role || '',
+    website: data.website || '',
     category: data.category || '',
     context: data.context || '',
     interaction_summary: data.interaction_summary || '',
@@ -130,6 +131,18 @@ function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
             value={formData.role}
             onChange={(e) => handleChange('role', e.target.value)}
             className="input"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+            Website
+          </label>
+          <input
+            type="text"
+            value={formData.website}
+            onChange={(e) => handleChange('website', e.target.value)}
+            className="input"
+            placeholder="https://..."
           />
         </div>
         <div>
