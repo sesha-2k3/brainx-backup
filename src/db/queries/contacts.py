@@ -17,6 +17,7 @@ async def create_contact(
     phone: str | None = None,
     company: str | None = None,
     role: str | None = None,
+    website: str | None = None,
     category: str | None = None,
     tags: list[str] | None = None,
     notes: str | None = None,
@@ -28,6 +29,7 @@ async def create_contact(
         phone=phone,
         company=company,
         role=role,
+        website=website,
         category=category,
         tags=tags or [],
         notes=notes,
@@ -146,6 +148,7 @@ def _build_search_vector(contact: Contact) -> str:
         contact.email or "",
         contact.company or "",
         contact.role or "",
+        contact.website or "",
         contact.notes or "",
         contact.context or "",
     ]

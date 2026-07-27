@@ -73,6 +73,7 @@ class Contact(TenantMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Classification
     category: Mapped[str | None] = mapped_column(
