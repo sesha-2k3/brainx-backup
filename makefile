@@ -10,13 +10,13 @@ help: ## Show all available commands
 # Docker
 
 up: ## Start PostgreSQL in the background
-	docker compose up -d
+	cd docker && docker compose up -d
 
 down: ## Stop all services
-	docker compose down
+	cd docker && docker compose down
 
 logs: ## Follow logs for all services
-	docker compose logs -f
+	cd docker && docker compose logs -f
 
 # Python environment
 
