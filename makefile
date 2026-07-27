@@ -18,7 +18,7 @@ down: ## Stop all services
 logs: ## Follow logs for all services
 	cd docker && docker compose logs -f
 
-# Python environment
+# Python 
 
 install: ## Install all Python dependencies including dev extras
 	uv sync --all-extras
