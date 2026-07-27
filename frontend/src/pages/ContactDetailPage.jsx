@@ -26,12 +26,15 @@ function ContactDetailPage() {
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({})
-  
+
   // Interaction state
   const [showAddInteraction, setShowAddInteraction] = useState(false)
   const [newInteraction, setNewInteraction] = useState({ summary: '', interaction_type: 'note' })
   const [editingInteraction, setEditingInteraction] = useState(null)
   const [editInteractionForm, setEditInteractionForm] = useState({ summary: '', interaction_type: '' })
+  // Tracks which interaction's raw transcript is currently expanded (only
+  // one at a time, id of the interaction or null)
+  const [expandedTranscript, setExpandedTranscript] = useState(null)
 
   useEffect(() => {
     loadContact()
@@ -74,7 +77,7 @@ function ContactDetailPage() {
   const handleAddInteraction = async (e) => {
     e.preventDefault()
     if (!newInteraction.summary.trim()) return
-    
+
     try {
       await createInteraction({
         contact_id: id,
@@ -99,7 +102,7 @@ function ContactDetailPage() {
 
   const handleSaveInteraction = async () => {
     if (!editInteractionForm.summary.trim()) return
-    
+
     try {
       await updateInteraction(editingInteraction, editInteractionForm)
       setEditingInteraction(null)
@@ -117,6 +120,10 @@ function ContactDetailPage() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  const toggleTranscript = (interactionId) => {
+    setExpandedTranscript(current => current === interactionId ? null : interactionId)
   }
 
   const formatDate = (dateStr) => {
@@ -140,10 +147,10 @@ function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="card p-12 text-center">
-        <svg 
+        <svg
           className="w-16 h-16 mx-auto mb-4 opacity-50"
-          fill="none" 
-          stroke="currentColor" 
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
           style={{ color: 'var(--color-text-muted)' }}
         >
@@ -160,8 +167,8 @@ function ContactDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link 
-            to="/contacts" 
+          <Link
+            to="/contacts"
             className="p-2 rounded-lg hover:bg-secondary transition-colors"
             style={{ color: 'var(--color-text-secondary)' }}
           >
@@ -170,7 +177,7 @@ function ContactDetailPage() {
             </svg>
           </Link>
           <div className="flex items-center space-x-3">
-            <div 
+            <div
               className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold text-white"
               style={{ backgroundColor: getAvatarColor(contact.name) }}
             >
@@ -182,7 +189,7 @@ function ContactDetailPage() {
               </h1>
               {(contact.role || contact.company) && (
                 <p style={{ color: 'var(--color-text-secondary)' }}>
-                  {contact.role && contact.company 
+                  {contact.role && contact.company
                     ? `${contact.role} at ${contact.company}`
                     : contact.role || contact.company
                   }
@@ -191,7 +198,7 @@ function ContactDetailPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="flex space-x-2">
           {editing ? (
             <>
@@ -219,7 +226,7 @@ function ContactDetailPage() {
               <button
                 onClick={handleDelete}
                 className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
-                style={{ 
+                style={{
                   color: 'var(--color-error)',
                   borderColor: 'var(--color-error)'
                 }}
@@ -233,7 +240,7 @@ function ContactDetailPage() {
 
       {/* Error */}
       {error && (
-        <div 
+        <div
           className="px-4 py-3 rounded-lg flex items-center justify-between"
           style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)' }}
         >
@@ -349,7 +356,7 @@ function ContactDetailPage() {
             {contact.email && (
               <div>
                 <p className="text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Email</p>
-                <a 
+                <a
                   href={`mailto:${contact.email}`}
                   className="font-medium hover:underline"
                   style={{ color: 'var(--color-primary)' }}
@@ -361,7 +368,7 @@ function ContactDetailPage() {
             {contact.phone && (
               <div>
                 <p className="text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Phone</p>
-                <a 
+                <a
                   href={`tel:${contact.phone}`}
                   className="font-medium"
                   style={{ color: 'var(--color-text)' }}
@@ -373,9 +380,9 @@ function ContactDetailPage() {
             {contact.category && (
               <div>
                 <p className="text-sm mb-1" style={{ color: 'var(--color-text-muted)' }}>Category</p>
-                <span 
+                <span
                   className="inline-block px-2 py-1 text-sm font-medium rounded capitalize"
-                  style={{ 
+                  style={{
                     backgroundColor: 'var(--color-primary-light)',
                     color: 'var(--color-primary)'
                   }}
@@ -468,14 +475,14 @@ function ContactDetailPage() {
 
         {/* Interactions List */}
         {interactions.length === 0 ? (
-          <div 
+          <div
             className="card p-8 text-center"
             style={{ color: 'var(--color-text-muted)' }}
           >
-            <svg 
+            <svg
               className="w-12 h-12 mx-auto mb-3 opacity-50"
-              fill="none" 
-              stroke="currentColor" 
+              fill="none"
+              stroke="currentColor"
               viewBox="0 0 24 24"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -531,44 +538,78 @@ function ContactDetailPage() {
                   </div>
                 ) : (
                   /* View Mode */
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <span 
-                        className="text-xs font-medium uppercase tracking-wider"
-                        style={{ color: 'var(--color-primary)' }}
-                      >
-                        {interaction.interaction_type}
-                      </span>
-                      <p className="mt-1" style={{ color: 'var(--color-text)' }}>
-                        {interaction.summary}
-                      </p>
+                  <>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <span
+                          className="text-xs font-medium uppercase tracking-wider"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          {interaction.interaction_type}
+                        </span>
+                        <p className="mt-1" style={{ color: 'var(--color-text)' }}>
+                          {interaction.summary}
+                        </p>
+                        {/* Only shown when this interaction actually has a
+                            stored raw transcript (AI-extracted interactions
+                            going forward - not manually-added notes, and not
+                            interactions created before this feature existed) */}
+                        {interaction.raw_transcript && (
+                          <button
+                            onClick={() => toggleTranscript(interaction.id)}
+                            className="mt-2 text-xs font-medium flex items-center space-x-1"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            <svg
+                              className="w-3.5 h-3.5 transition-transform"
+                              style={{ transform: expandedTranscript === interaction.id ? 'rotate(90deg)' : 'none' }}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span>
+                              {expandedTranscript === interaction.id ? 'Hide transcription' : 'View transcription'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-3 ml-4">
+                        <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                          {formatDate(interaction.occurred_at)}
+                        </span>
+                        <button
+                          onClick={() => handleStartEditInteraction(interaction)}
+                          className="p-1 rounded hover:bg-secondary transition-colors"
+                          style={{ color: 'var(--color-text-muted)' }}
+                          title="Edit"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteInteraction(interaction.id)}
+                          className="p-1 rounded hover:bg-secondary transition-colors"
+                          style={{ color: 'var(--color-text-muted)' }}
+                          title="Delete"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-3 ml-4">
-                      <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                        {formatDate(interaction.occurred_at)}
-                      </span>
-                      <button
-                        onClick={() => handleStartEditInteraction(interaction)}
-                        className="p-1 rounded hover:bg-secondary transition-colors"
-                        style={{ color: 'var(--color-text-muted)' }}
-                        title="Edit"
+
+                    {/* Expanded raw transcript panel */}
+                    {expandedTranscript === interaction.id && interaction.raw_transcript && (
+                      <div
+                        className="mt-3 p-3 rounded-lg text-sm whitespace-pre-wrap"
+                        style={{ backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteInteraction(interaction.id)}
-                        className="p-1 rounded hover:bg-secondary transition-colors"
-                        style={{ color: 'var(--color-text-muted)' }}
-                        title="Delete"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                        {interaction.raw_transcript}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ))}
