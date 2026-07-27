@@ -89,6 +89,8 @@ async def merge_or_create(
             updates["company"] = extracted.company
         if extracted.role and not duplicate.role:
             updates["role"] = extracted.role
+        if extracted.website and not duplicate.website:
+            updates["website"] = extracted.website
         if extracted.category and not duplicate.category:
             updates["category"] = extracted.category
 
@@ -113,6 +115,7 @@ async def merge_or_create(
             phone=normalize_phone(extracted.phone) if extracted.phone else None,
             company=extracted.company,
             role=extracted.role,
+            website=extracted.website,
             category=extracted.category,
             context=extracted.context,
         )

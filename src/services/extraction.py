@@ -28,7 +28,7 @@ from src.schemas.contacts import ExtractedContactData
 from src.services.groq_client import get_groq_client
 from src.utils.category import clamp_category, match_category_keywords
 from src.utils.phone import extract_phones
-from src.utils.text import extract_emails, parse_llm_json
+from src.utils.text import extract_emails, extract_urls, parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
     # --- Deterministic pass: runs on the full, untruncated text --------------
     emails = extract_emails(text)
     phones = extract_phones(text)
+    urls = extract_urls(text)
     keyword_category = match_category_keywords(text)
 
     # --- LLM pass: only for name / company / role / context / summary / tasks,
@@ -142,6 +143,7 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
         # there's nothing to reconcile, just attach the regex results.
         extracted.email = emails[0] if emails else None
         extracted.phone = phones[0] if phones else None
+        extracted.website = urls[0] if urls else None
 
         # Category: trust the keyword match over anything the LLM guessed.
         # If there was no keyword match, fall back to the LLM's guess - but

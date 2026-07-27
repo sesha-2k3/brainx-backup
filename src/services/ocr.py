@@ -6,7 +6,6 @@ import asyncio
 import io
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 
 import pytesseract
@@ -18,13 +17,6 @@ logger = logging.getLogger(__name__)
 
 # Threadpool for blocking OCR operations.
 _executor = ThreadPoolExecutor(max_workers=4)
-
-# URL isn't part of ExtractedContactData yet (flagged as a future field in the
-# original code) - kept here since it's OCR-specific metadata, not something
-# extract_contact_data() returns. Email/phone regex now lives in
-# src/utils/phone.py and src/utils/text.py and is applied once, inside
-# extract_contact_data() itself - no need to duplicate or merge it here.
-URL_PATTERN = re.compile(r"https?://[^\s]+|www\.[^\s]+")
 
 
 def _run_ocr_sync(image_bytes: bytes) -> tuple[str, float]:
@@ -61,18 +53,17 @@ async def process_business_card(file_path: str) -> dict:
     confidences = [c for c in ocr_data["conf"] if c > 0]
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0
 
-    # extract_contact_data() already runs the email/phone regex pass
-    # internally (on the full raw_text) before ever calling the LLM - no
-    # separate quick-extract/merge step needed here anymore.
+    # extract_contact_data() already runs the email/phone/website regex
+    # passes internally (on the full raw_text) before ever calling the LLM -
+    # no separate quick-extract/merge step needed here. website is now a
+    # field on ExtractedContactData itself (see extracted.website), so the
+    # URL_PATTERN this file used to keep as OCR-specific metadata is gone.
     extracted = await extract_contact_data(raw_text)
-
-    urls = URL_PATTERN.findall(raw_text)
 
     return {
         "raw_text": raw_text,
         "confidence": avg_confidence,
         "extracted": extracted,
-        "url": urls[0] if urls else None,
     }
 
 
@@ -86,11 +77,9 @@ async def process_business_card_bytes(image_bytes: bytes) -> dict:
     raw_text, confidence = await loop.run_in_executor(_executor, _run_ocr_sync, image_bytes)
 
     extracted = await extract_contact_data(raw_text)
-    urls = URL_PATTERN.findall(raw_text)
 
     return {
         "raw_text": raw_text,
         "confidence": confidence,
         "extracted": extracted,
-        "url": urls[0] if urls else None,
     }
