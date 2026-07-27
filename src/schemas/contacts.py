@@ -17,6 +17,7 @@ class ContactBase(BaseModel):
     phone: str | None = None
     company: str | None = None
     role: str | None = None
+    website: str | None = None
     category: ContactCategory | None = None
     tags: list[str] = Field(default_factory=list)
     notes: str | None = None
@@ -31,6 +32,7 @@ class ContactCreate(BaseModel):
     phone: str | None = None
     company: str | None = None
     role: str | None = None
+    website: str | None = None
     category: str | None = None  # str to accept any value from API
     context: str | None = None
     notes: str | None = None
@@ -44,6 +46,7 @@ class ContactUpdate(BaseModel):
     phone: str | None = None
     company: str | None = None
     role: str | None = None
+    website: str | None = None
     category: str | None = None  # str to accept any value from API
     tags: list[str] | None = None
     notes: str | None = None
@@ -89,6 +92,7 @@ class ExtractedContactData(BaseModel):
     phone: str | None = None
     company: str | None = None
     role: str | None = None
+    website: str | None = None
     category: ContactCategory | None = None
     context: str | None = None
     interaction_summary: str | None = None
