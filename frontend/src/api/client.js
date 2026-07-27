@@ -142,6 +142,10 @@ export async function getDueReminders() {
   return request('/contacts/due-reminders')
 }
 
+export async function getUpcomingReminders(limit = 10) {
+  return request(`/contacts/upcoming-reminders?limit=${limit}`)
+}
+
 export async function markContacted(contactId) {
   return request(`/contacts/${contactId}/mark-contacted`, {
     method: 'POST',
