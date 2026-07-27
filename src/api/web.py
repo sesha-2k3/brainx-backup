@@ -555,13 +555,23 @@ async def list_tasks(
     contact_id: str | None = None,
     db: AsyncSession = Depends(get_db_for_user),
 ):
-    """List tasks."""
+    """
+    List tasks.
+
+    When include_completed is true and no contact_id is given, completed
+    tasks are appended after pending tasks, ordered by completed_at
+    descending (most recently completed first) - pending tasks keep their
+    existing due-date ordering.
+    """
     if contact_id:
         tasks = await task_queries.list_tasks_for_contact(
             db, contact_id, include_completed=include_completed
         )
     else:
         tasks = await task_queries.list_pending_tasks(db, limit=100)
+        if include_completed:
+            completed = await task_queries.list_completed_tasks(db, limit=100)
+            tasks = tasks + completed
 
     return {
         "tasks": [
@@ -573,6 +583,7 @@ async def list_tasks(
                 "status": task.status,
                 "contact_id": task.contact_id,
                 "contact_name": task.contact.name if task.contact else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             }
             for task in tasks
         ]
