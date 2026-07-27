@@ -94,6 +94,32 @@ async def list_pending_tasks(
     return list(result.scalars().all())
 
 
+async def list_completed_tasks(
+    db: AsyncSession,
+    contact_id: str | None = None,
+    limit: int = 50,
+) -> list[Task]:
+    """
+    List completed tasks, most-recently-completed first.
+
+    Used by the Tasks page "show completed" toggle - this is the piece that
+    was missing before (completed tasks were never fetched at all for the
+    main task list, only for a single contact's task list).
+    """
+    query = (
+        select(Task)
+        .options(selectinload(Task.contact))
+        .where(
+            Task.status == TaskStatus.COMPLETED,
+        )
+    )
+    if contact_id:
+        query = query.where(Task.contact_id == contact_id)
+    query = query.order_by(Task.completed_at.desc().nullslast()).limit(limit)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
 async def list_tasks_due_by(
     db: AsyncSession,
     due_by: datetime,
