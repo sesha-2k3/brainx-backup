@@ -155,7 +155,7 @@ def _build_search_vector(contact: Contact) -> str:
 async def get_contacts_due_for_reminder(
     db: AsyncSession,
 ) -> list[Contact]:
-    """Get contacts whose next_reminder_at is due."""
+    """Get contacts whose next_reminder_at is due (now or in the past)."""
     now = datetime.now(UTC)
     result = await db.execute(
         select(Contact)
@@ -164,6 +164,30 @@ async def get_contacts_due_for_reminder(
             Contact.next_reminder_at <= now,
         )
         .order_by(Contact.next_reminder_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_upcoming_reminders(
+    db: AsyncSession,
+    limit: int = 10,
+) -> list[Contact]:
+    """
+    Get contacts with a reminder scheduled for the future (not yet due),
+    soonest first. Used for the "Upcoming" side panel on the Reminders page -
+    the main list there only ever shows contacts that are *already* due, so
+    this is the only place these show up before they land in that list.
+    """
+    now = datetime.now(UTC)
+    result = await db.execute(
+        select(Contact)
+        .where(
+            Contact.reminder_frequency.isnot(None),
+            Contact.next_reminder_at.isnot(None),
+            Contact.next_reminder_at > now,
+        )
+        .order_by(Contact.next_reminder_at.asc())
+        .limit(limit)
     )
     return list(result.scalars().all())
 
