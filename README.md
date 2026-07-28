@@ -70,7 +70,7 @@ Open http://localhost:8000
 - **Text input**: Paste meeting notes, extract contacts automatically
 - **Voice upload**: Upload voice memos, transcribed and parsed
 - **Business cards**: Upload photos, OCR extracts contact info
-- **Smart extraction**: LLM identifies name, email, phone, company, role
+- **Smart extraction**: Identification of name, email, phone, company, role
 - **Deduplication**: Detects existing contacts by email/phone
 - **Follow-ups**: Create tasks linked to contacts
 - **Natural search**: "Who is Eddie?", "Investors I met last month"
