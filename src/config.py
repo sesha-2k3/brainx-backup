@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     jwt_secret: str = "in-env"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
+    # Used when the client passes remember_me=true on login.
+    remember_me_expire_minutes: int = 60 * 24 * 30  # 30 days
 
     @property
     def is_development(self) -> bool:
