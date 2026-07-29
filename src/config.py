@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     log_level: str = "INFO"
-    tenant_id: str = "default"
+    # NOTE: no tenant_id here. Tenancy is per-user now - the authenticated
+    # user's UUID *is* the tenant_id, injected by get_db_for_user(). A leftover
+    # TENANT_ID in .env is harmless: model_config sets extra="ignore".
 
     # Auth — generate secret with: openssl rand -hex 32
     jwt_secret: str = "in-env"
