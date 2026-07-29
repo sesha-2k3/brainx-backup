@@ -6,7 +6,24 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Contact, Interaction
+from src.db.queries.filters import match_all_terms
 from src.utils.text import escape_like
+
+# Columns that a free-text search looks through.
+CONTACT_SEARCH_COLUMNS = (
+    Contact.name,
+    Contact.email,
+    Contact.company,
+    Contact.role,
+    Contact.website,
+    Contact.notes,
+    Contact.context,
+)
+
+INTERACTION_SEARCH_COLUMNS = (
+    Interaction.summary,
+    Interaction.raw_transcript,
+)
 
 
 async def search_all(
@@ -18,30 +35,22 @@ async def search_all(
     Search across contacts and interactions.
     Returns dict with 'contacts' and 'interactions' lists.
     """
-    if not query_text.strip():
+    contact_filter = match_all_terms(query_text, *CONTACT_SEARCH_COLUMNS)
+    interaction_filter = match_all_terms(query_text, *INTERACTION_SEARCH_COLUMNS)
+
+    if contact_filter is None or interaction_filter is None:
         return {"contacts": [], "interactions": []}
 
-    # Escape special characters and prepare pattern
-    escaped_query = escape_like(query_text.lower())
-    pattern = f"%{escaped_query}%"
-
-    # Search contacts
+    # Search contacts (tenant filter applied automatically by TenantSession)
     contacts_result = await db.execute(
-        select(Contact)
-        .where(
-            Contact.search_vector.ilike(pattern, escape="\\"),
-        )
-        .order_by(Contact.updated_at.desc())
-        .limit(limit)
+        select(Contact).where(contact_filter).order_by(Contact.updated_at.desc()).limit(limit)
     )
     contacts = list(contacts_result.scalars().all())
 
     # Search interactions
     interactions_result = await db.execute(
         select(Interaction)
-        .where(
-            Interaction.search_vector.ilike(pattern, escape="\\"),
-        )
+        .where(interaction_filter)
         .order_by(Interaction.occurred_at.desc())
         .limit(limit)
     )
