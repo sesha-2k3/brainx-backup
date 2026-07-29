@@ -33,7 +33,6 @@ class TaskResponse(BaseModel):
     """Task response with all fields."""
 
     id: str
-    tenant_id: str
     contact_id: str | None = None
     title: str
     description: str | None = None
