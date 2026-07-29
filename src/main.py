@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api import api_router
@@ -62,16 +62,38 @@ app.add_middleware(
 # Include API routes
 app.include_router(api_router)
 
-# Serve frontend static files in production
-if FRONTEND_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+# Serve frontend static files in production.
+#
+# Vite is configured with base: '/brainx/', so the built index.html references
+# its bundles as /brainx/assets/*. This block previously mounted StaticFiles at
+# /assets and served a catch-all from /, which meant every asset request fell
+# through to the catch-all and received index.html - the browser got HTML where
+# it expected JavaScript, and the app never booted when served by FastAPI.
+# (The Vite dev server was unaffected, which is why this stayed hidden.)
+FRONTEND_BASE = "/brainx"
 
-    @app.get("/{full_path:path}")
+if FRONTEND_DIR.exists():
+    app.mount(
+        f"{FRONTEND_BASE}/assets",
+        StaticFiles(directory=FRONTEND_DIR / "assets"),
+        name="assets",
+    )
+
+    @app.get("/", include_in_schema=False)
+    async def root_redirect():
+        """Send bare / to the app's base path."""
+        return RedirectResponse(url=f"{FRONTEND_BASE}/")
+
+    @app.get(f"{FRONTEND_BASE}/{{full_path:path}}", include_in_schema=False)
     async def serve_frontend(full_path: str):
-        """Serve frontend for all non-API routes."""
-        file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
+        """Serve built files, falling back to index.html for client-side routes."""
+        candidate = (FRONTEND_DIR / full_path).resolve()
+
+        # Containment check: full_path is attacker-controlled, and without this
+        # a traversal like ../../etc/passwd would be served happily.
+        if candidate.is_file() and candidate.is_relative_to(FRONTEND_DIR.resolve()):
+            return FileResponse(candidate)
+
         return FileResponse(FRONTEND_DIR / "index.html")
 else:
 
@@ -79,7 +101,7 @@ else:
     async def root():
         """Root endpoint when frontend not built."""
         return {
-            "name": "Personal CRM",
+            "name": "BrainX",
             "version": "0.1.0",
             "status": "running",
             "note": "Run 'npm run build' in frontend/ to enable web UI",
