@@ -35,8 +35,6 @@ async def create_contact(
         notes=notes,
         context=context,
     )
-    # Build search vector
-    contact.search_vector = _build_search_vector(contact)
     db.add(contact)
     await db.flush()
     return contact
@@ -104,7 +102,6 @@ async def update_contact(
         if hasattr(contact, key):
             setattr(contact, key, value)
 
-    contact.search_vector = _build_search_vector(contact)
     contact.updated_at = datetime.now(UTC)
     await db.flush()
     return contact
@@ -139,20 +136,6 @@ async def search_contacts_by_name(
         .limit(limit)
     )
     return list(result.scalars().all())
-
-
-def _build_search_vector(contact: Contact) -> str:
-    """Build a simple text search vector from contact fields."""
-    parts = [
-        contact.name,
-        contact.email or "",
-        contact.company or "",
-        contact.role or "",
-        contact.website or "",
-        contact.notes or "",
-        contact.context or "",
-    ]
-    return " ".join(filter(None, parts)).lower()
 
 
 async def get_contacts_due_for_reminder(
