@@ -85,7 +85,7 @@ async def login(
             detail="Account is deactivated",
         )
 
-    token = create_access_token(subject=user.id)
+    token = create_access_token(subject=user.id, remember_me=body.remember_me)
     return TokenResponse(access_token=token)
 
 
