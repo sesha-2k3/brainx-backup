@@ -40,17 +40,22 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, *, remember_me: bool = False) -> str:
     """
     Create a signed JWT containing the user's ID as the subject claim.
 
     Args:
         subject: The user's ID (str UUID).
+        remember_me: When True, issue a long-lived token
+            (settings.remember_me_expire_minutes) instead of the default.
 
     Returns:
         A compact JWT string.
     """
-    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
+    lifetime = (
+        settings.remember_me_expire_minutes if remember_me else settings.access_token_expire_minutes
+    )
+    expire = datetime.now(UTC) + timedelta(minutes=lifetime)
     payload = {
         "sub": subject,  # who the token represents
         "exp": expire,  # expiry timestamp (PyJWT validates this automatically)
