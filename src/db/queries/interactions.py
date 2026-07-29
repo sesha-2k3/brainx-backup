@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Interaction
-from src.utils.text import escape_like
+from src.db.queries.filters import match_all_terms
 
 
 async def create_interaction(
@@ -27,8 +27,6 @@ async def create_interaction(
         raw_transcript=raw_transcript,
         extra_data=extra_data,
     )
-    # Build search vector
-    interaction.search_vector = _build_search_vector(interaction)
     db.add(interaction)
     await db.flush()
     return interaction
@@ -70,26 +68,16 @@ async def search_interactions(
     limit: int = 20,
 ) -> list[Interaction]:
     """Search interactions by summary/transcript using ILIKE."""
-    # Escape special LIKE characters
-    escaped_query = escape_like(query_text.lower())
+    text_filter = match_all_terms(query_text, Interaction.summary, Interaction.raw_transcript)
+    if text_filter is None:
+        return []
 
-    query = select(Interaction).where(
-        Interaction.search_vector.ilike(f"%{escaped_query}%", escape="\\"),
-    )
+    query = select(Interaction).where(text_filter)
     if contact_id:
         query = query.where(Interaction.contact_id == contact_id)
     query = query.order_by(Interaction.occurred_at.desc()).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
-
-
-def _build_search_vector(interaction: Interaction) -> str:
-    """Build text search vector from interaction fields."""
-    parts = [
-        interaction.summary,
-        interaction.raw_transcript or "",
-    ]
-    return " ".join(filter(None, parts)).lower()
 
 
 async def get_interaction_by_id(
@@ -118,10 +106,6 @@ async def update_interaction(
     for key, value in kwargs.items():
         if hasattr(interaction, key):
             setattr(interaction, key, value)
-
-    # Rebuild search vector if summary or transcript changed
-    if "summary" in kwargs or "raw_transcript" in kwargs:
-        interaction.search_vector = _build_search_vector(interaction)
 
     await db.flush()
     return interaction
