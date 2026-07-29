@@ -27,7 +27,6 @@ class InteractionResponse(BaseModel):
 
     id: str
     contact_id: str
-    tenant_id: str
     interaction_type: str
     summary: str
     occurred_at: datetime
