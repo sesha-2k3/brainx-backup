@@ -53,9 +53,10 @@ export function AuthProvider({ children }) {
   /**
    * Log in with email + password.
    *
-   * @param {boolean} rememberMe — when true, pass a flag to the backend so it
-   *   issues a 30-day token instead of the default 24-hour one.
-   *   The backend reads this from the `remember_me` field in the request body.
+   * @param {boolean} rememberMe — when true, the backend issues a long-lived
+   *   token (settings.remember_me_expire_minutes, 30 days by default) instead
+   *   of the standard 24-hour one. authClient maps this to the `remember_me`
+   *   body field that LoginRequest declares.
    */
   const login = useCallback(async ({ email, password, rememberMe = false }) => {
     const { access_token } = await loginUser({ email, password, rememberMe })
