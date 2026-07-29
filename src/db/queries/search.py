@@ -9,7 +9,9 @@ from src.db.models import Contact, Interaction
 from src.db.queries.filters import match_all_terms
 from src.utils.text import escape_like
 
-# Columns that a free-text search looks through.
+# Columns that a free-text search looks through. These are exactly the fields
+# the old `search_vector` concatenation was built from - the difference is that
+# these columns actually exist.
 CONTACT_SEARCH_COLUMNS = (
     Contact.name,
     Contact.email,
