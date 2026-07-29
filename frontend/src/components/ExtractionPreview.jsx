@@ -4,26 +4,41 @@ import { useState } from 'react'
 
 const CATEGORIES = ['investor', 'client', 'partner', 'friend', 'family', 'colleague', 'other']
 
+// "" is not the same as "not provided". Submitting empty strings writes them
+// straight into the DB, where they break duplicate detection (a "" email never
+// matches a real one) and make "no email" indistinguishable from "blank email".
+// The backend defends against this too, but fixing it here keeps the payload honest.
+const blankToNull = (value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
 function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
-  
-  // undefined check
+  // NOTE: hooks must run unconditionally and in the same order on every render.
+  // The `if (!data) return null` guard used to sit ABOVE this useState call,
+  // which is a Rules-of-Hooks violation — the moment `data` went null while the
+  // component stayed mounted, React would throw "rendered fewer hooks than
+  // expected". Defaulting here and guarding after the hooks is equivalent and valid.
+  const source = data ?? {}
+
+  const [formData, setFormData] = useState({
+    name: source.name || '',
+    email: source.email || '',
+    phone: source.phone || '',
+    company: source.company || '',
+    role: source.role || '',
+    website: source.website || '',
+    category: source.category || '',
+    context: source.context || '',
+    interaction_summary: source.interaction_summary || '',
+    tasks: source.tasks || [],
+  })
+  const [submitting, setSubmitting] = useState(false)
+
   if (!data) {
     return null
   }
-
-  const [formData, setFormData] = useState({
-    name: data.name || '',
-    email: data.email || '',
-    phone: data.phone || '',
-    company: data.company || '',
-    role: data.role || '',
-    website: data.website || '',
-    category: data.category || '',
-    context: data.context || '',
-    interaction_summary: data.interaction_summary || '',
-    tasks: data.tasks || [],
-  })
-  const [submitting, setSubmitting] = useState(false)
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -54,8 +69,15 @@ function ExtractionPreview({ data, proposalId, onConfirm, onCancel }) {
     setSubmitting(true)
     try {
       // Filter out empty tasks
-      const tasksToSubmit = formData.tasks.filter(t => t.title && t.title.trim())
-      await onConfirm({ ...formData, tasks: tasksToSubmit })
+      const tasksToSubmit = formData.tasks
+        .filter(t => t.title && t.title.trim())
+        .map(t => ({ title: t.title.trim(), due_date: blankToNull(t.due_date) }))
+
+      const payload = Object.fromEntries(
+        Object.entries(formData).map(([key, value]) => [key, blankToNull(value)])
+      )
+
+      await onConfirm({ ...payload, name: formData.name.trim(), tasks: tasksToSubmit })
     } finally {
       setSubmitting(false)
     }
