@@ -11,7 +11,6 @@ from src.db.database import (
     async_session_factory,
     close_db,
     engine,
-    get_db,
     get_db_unscoped,
     init_db,
 )
@@ -38,7 +37,9 @@ async def get_db_for_user(
     """
     Tenant-scoped DB session isolated to the authenticated user.
     Each user's data is fully separate — their user ID is used as tenant_id.
-    Drop-in replacement for get_db() on all protected routes.
+
+    This is the ONLY tenant-scoped session dependency. The old settings-based
+    get_db() has been removed (see the note in database.py).
     """
     factory = _tenant_session_factory(current_user.id)
     async with factory() as session:
@@ -63,7 +64,6 @@ __all__ = [
     "async_session_factory",
     "close_db",
     "engine",
-    "get_db",
     "get_db_for_user",
     "get_db_unscoped",
     "init_db",
