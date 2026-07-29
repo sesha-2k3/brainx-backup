@@ -5,13 +5,12 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.config import get_settings
 from src.db import get_db_for_user
-from src.db.models import Contact
+from src.db.models import Contact, Interaction, Proposal
 from src.db.queries import contacts as contact_queries
 from src.db.queries import interactions as interaction_queries
 from src.db.queries import proposals as proposal_queries
@@ -20,18 +19,37 @@ from src.db.queries import tasks as task_queries
 from src.schemas.contacts import ContactCreate, ContactUpdate, ExtractedContactData
 from src.schemas.interactions import InteractionCreate, InteractionUpdate
 from src.schemas.tasks import TaskCreate, TaskUpdate
-from src.services.dedup import find_duplicate
+from src.services.dedup import find_duplicate, merge_or_create
 from src.services.extraction import extract_contact_data
 from src.services.ocr import process_business_card_bytes
 from src.services.transcription import transcribe_audio_bytes
-from src.utils.dates import parse_relative_date
+from src.utils.category import clamp_category
+from src.utils.dates import ensure_aware, parse_relative_date
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+# NOTE: the module-level `settings = get_settings()` is gone - it existed only
+# to read settings.tenant_id, which per-user tenancy replaced. If a test still
+# patches src.api.web.settings, that patch now has nothing to attach to.
 router = APIRouter(prefix="/api", tags=["web"])
 
 # Security limits
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    """
+    Normalize "" (and whitespace-only) to None.
+
+    HTML forms submit absent fields as empty strings, not as missing keys, so
+    without this an untouched field lands in the DB as "" rather than NULL.
+    That breaks dedup (a "" email never matches a real one), breaks
+    "is this field set?" checks everywhere, and makes NULL vs "" a coin flip
+    depending on whether a contact came from the API or the UI.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 # Request/Response models (web module specific)
@@ -102,6 +120,10 @@ async def process_text_input(
         tasks = [{"title": extracted.follow_up, "due_date": extracted.follow_up_date}]
 
     return {
+        # Both keys are returned deliberately: this endpoint used to emit
+        # "proposal_id" while /input/file emitted "id" for the same concept.
+        # Emitting both keeps existing callers working while converging on "id".
+        "id": proposal.id,
         "proposal_id": proposal.id,
         "extracted": {
             "name": extracted.name,
@@ -187,6 +209,7 @@ async def process_file_input(
 
     return {
         "id": proposal.id,
+        "proposal_id": proposal.id,
         "extracted_data": extracted.model_dump(),
         "confidence_score": confidence,
         "duplicate_contact": {
@@ -231,49 +254,51 @@ async def confirm_proposal(
         raise HTTPException(status_code=404, detail="Proposal not found")
 
     # raw_text was stashed alongside the LLM's structured fields when the
-    # proposal was created - pop it out before reconstructing
-    # ExtractedContactData so it isn't treated as (and possibly rejected as)
-    # one of that model's own fields.
-    extracted_data = dict(proposal.extracted_data)
-    raw_text = extracted_data.pop("raw_text", None)
-    extracted = ExtractedContactData(**extracted_data)
-    duplicate = await find_duplicate(db, extracted)
+    # proposal was created; it becomes the Interaction's raw_transcript.
+    raw_text = (proposal.extracted_data or {}).get("raw_text")
 
-    if duplicate:
-        contact = duplicate
-        updates = {}
-        if data.email and not contact.email:
-            updates["email"] = data.email
-        if data.phone and not contact.phone:
-            updates["phone"] = data.phone
-        if data.company and not contact.company:
-            updates["company"] = data.company
-        if data.role and not contact.role:
-            updates["role"] = data.role
-        if data.website and not contact.website:
-            updates["website"] = data.website
-        if updates:
-            await contact_queries.update_contact(db, contact.id, **updates)
-    else:
-        contact = await contact_queries.create_contact(
-            db,
-            name=data.name,
-            email=data.email,
-            phone=data.phone,
-            company=data.company,
-            role=data.role,
-            website=data.website,
-            category=data.category,
-            context=data.context,
-        )
+    # Build the contact payload from `data` - the values the user actually
+    # confirmed on the review screen - NOT from proposal.extracted_data.
+    #
+    # This previously deduped against the LLM's original extraction while
+    # writing the user's edits, so correcting a misread email on the confirm
+    # screen had no effect on duplicate detection: the match ran on the wrong
+    # value and you'd get a second contact for someone you already had.
+    #
+    # _blank_to_none matters here too: ExtractionPreview initializes every
+    # field to "" and submits the whole form, so an absent email arrives as an
+    # empty string. Stored as "" it never matches a real email on any future
+    # dedup pass, and it makes "has no email" indistinguishable from
+    # "has an email that happens to be blank".
+    confirmed = ExtractedContactData(
+        name=data.name,
+        email=_blank_to_none(data.email),
+        phone=_blank_to_none(data.phone),
+        company=_blank_to_none(data.company),
+        role=_blank_to_none(data.role),
+        website=_blank_to_none(data.website),
+        # clamp, don't pass through: ExtractedContactData.category is typed as
+        # the ContactCategory enum, so Pydantic validates it at construction.
+        # An unrecognized value from an API client would raise here and surface
+        # as a 500. clamp_category() maps anything invalid to None, which is the
+        # same guarantee extraction.py already relies on for LLM output.
+        category=clamp_category(_blank_to_none(data.category)),
+        context=_blank_to_none(data.context),
+    )
+
+    # merge_or_create() is the single source of truth for merge semantics.
+    # This endpoint used to reimplement it inline, minus context-appending and
+    # email/phone normalization, so the two drifted.
+    contact, _is_new = await merge_or_create(db, confirmed)
 
     interaction = None
-    if data.interaction_summary:
+    interaction_summary = _blank_to_none(data.interaction_summary)
+    if interaction_summary:
         interaction = await interaction_queries.create_interaction(
             db,
             contact_id=contact.id,
             interaction_type="note",
-            summary=data.interaction_summary,
+            summary=interaction_summary,
             occurred_at=datetime.now(UTC),
             # The user's original wording, preserved for the "View
             # Transcription" panel on the contact detail page.
@@ -282,18 +307,19 @@ async def confirm_proposal(
 
     created_tasks = []
     for task_data in data.tasks:
-        if task_data.get("title"):
-            due_date = None
-            if task_data.get("due_date"):
-                due_date = parse_relative_date(task_data["due_date"])
+        title = _blank_to_none(task_data.get("title"))
+        if not title:
+            continue
 
-            task = await task_queries.create_task(
-                db,
-                title=task_data["title"],
-                contact_id=contact.id,
-                due_date=due_date,
-            )
-            created_tasks.append(task)
+        due_date = parse_relative_date(task_data["due_date"]) if task_data.get("due_date") else None
+
+        task = await task_queries.create_task(
+            db,
+            title=title,
+            contact_id=contact.id,
+            due_date=due_date,
+        )
+        created_tasks.append(task)
 
     await proposal_queries.confirm_proposal(
         db,
@@ -463,14 +489,14 @@ async def create_contact_direct(
     contact = await contact_queries.create_contact(
         db,
         name=data.name,
-        email=data.email,
-        phone=data.phone,
-        company=data.company,
-        role=data.role,
-        website=data.website,
-        category=data.category,
-        context=data.context,
-        notes=data.notes,
+        email=_blank_to_none(data.email),
+        phone=_blank_to_none(data.phone),
+        company=_blank_to_none(data.company),
+        role=_blank_to_none(data.role),
+        website=_blank_to_none(data.website),
+        category=clamp_category(_blank_to_none(data.category)),
+        context=_blank_to_none(data.context),
+        notes=_blank_to_none(data.notes),
     )
 
     return {
@@ -493,7 +519,24 @@ async def update_contact(
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    # exclude_unset means we only touch fields the client actually sent, which
+    # is what makes clearing possible: previously this filtered on `is not
+    # None`, so sending {"company": null} to clear a field was indistinguishable
+    # from not sending it at all, and the field could never be unset.
+    updates = data.model_dump(exclude_unset=True)
+
+    # Normalize "" to None so a cleared text input stores NULL, not "".
+    updates = {k: (_blank_to_none(v) if isinstance(v, str) else v) for k, v in updates.items()}
+
+    # reminder_frequency is settable through this endpoint as well as through
+    # /set-reminder, so recompute the derived schedule here too - otherwise the
+    # frequency changes while next_reminder_at keeps the old cadence.
+    if "reminder_frequency" in updates:
+        frequency = updates["reminder_frequency"]
+        updates["next_reminder_at"] = (
+            contact_queries.calculate_next_reminder(frequency) if frequency else None
+        )
+
     if updates:
         contact = await contact_queries.update_contact(db, contact_id, **updates)
 
@@ -523,24 +566,33 @@ async def delete_contact(
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    # Clear proposal references
-    await db.execute(
-        text("UPDATE proposals SET interaction_id = NULL WHERE contact_id = :contact_id"),
-        {"contact_id": contact_id},
+    # Clear proposal back-references so their FKs don't block the delete.
+    #
+    # This was previously four raw `text()` statements with no tenant_id
+    # predicate. It wasn't exploitable (the scoped lookup above gates it), but
+    # raw SQL bypasses the TenantSession auto-filter entirely - and note that
+    # the auto-filter only covers SELECTs, so a bare ORM update() would be
+    # unscoped too. Selecting the rows first keeps the tenant filter in play,
+    # then we mutate the loaded objects and let the flush write them.
+    proposals_result = await db.execute(
+        select(Proposal).where(
+            or_(
+                Proposal.contact_id == contact_id,
+                Proposal.interaction_id.in_(
+                    select(Interaction.id).where(Interaction.contact_id == contact_id)
+                ),
+            )
+        )
     )
-    await db.execute(
-        text("UPDATE proposals SET contact_id = NULL WHERE contact_id = :contact_id"),
-        {"contact_id": contact_id},
-    )
+    for proposal in proposals_result.scalars().all():
+        proposal.contact_id = None
+        proposal.interaction_id = None
 
-    # Delete related records
-    await db.execute(
-        text("DELETE FROM tasks WHERE contact_id = :contact_id"), {"contact_id": contact_id}
-    )
-    await db.execute(
-        text("DELETE FROM interactions WHERE contact_id = :contact_id"), {"contact_id": contact_id}
-    )
+    await db.flush()
 
+    # Interactions and tasks are removed by the ORM relationship cascade
+    # (cascade="all, delete-orphan" on Contact.interactions / Contact.tasks),
+    # which the previous raw DELETEs were duplicating by hand.
     await db.delete(contact)
     await db.flush()
 
@@ -649,12 +701,15 @@ async def create_task(
     db: AsyncSession = Depends(get_db_for_user),
 ):
     """Create a new task."""
+    # reminder_at was silently dropped here even though TaskCreate declares it
+    # and the column exists, so reminders set at creation time never fired.
     task = await task_queries.create_task(
         db,
         title=data.title,
         contact_id=data.contact_id,
         description=data.description,
-        due_date=data.due_date,
+        due_date=ensure_aware(data.due_date),
+        reminder_at=ensure_aware(data.reminder_at),
     )
 
     return {
@@ -662,6 +717,7 @@ async def create_task(
             "id": task.id,
             "title": task.title,
             "due_date": task.due_date.isoformat() if task.due_date else None,
+            "reminder_at": task.reminder_at.isoformat() if task.reminder_at else None,
             "status": task.status,
         }
     }
@@ -693,6 +749,10 @@ async def update_task(
             updates["contact_id"] = None
         else:
             updates["contact_id"] = task_data.contact_id
+    if task_data.reminder_at is not None:
+        # Reset reminder_sent so an edited reminder actually fires again.
+        updates["reminder_at"] = ensure_aware(task_data.reminder_at)
+        updates["reminder_sent"] = False
 
     if updates:
         await task_queries.update_task(db, task_id, **updates)
@@ -743,7 +803,7 @@ async def create_interaction(
 
     occurred_at = datetime.now(UTC)
     if data.occurred_at:
-        occurred_at = datetime.fromisoformat(data.occurred_at)
+        occurred_at = ensure_aware(datetime.fromisoformat(data.occurred_at))
 
     interaction = await interaction_queries.create_interaction(
         db,
@@ -781,7 +841,7 @@ async def update_interaction(
     if data.summary is not None:
         updates["summary"] = data.summary
     if data.occurred_at is not None:
-        updates["occurred_at"] = datetime.fromisoformat(data.occurred_at)
+        updates["occurred_at"] = ensure_aware(datetime.fromisoformat(data.occurred_at))
 
     if updates:
         await interaction_queries.update_interaction(db, interaction_id, **updates)
@@ -885,7 +945,7 @@ async def search(
         date_range = filters.get("date_range") or {}
         if date_range.get("start"):
             try:
-                since = datetime.fromisoformat(date_range["start"])
+                since = ensure_aware(datetime.fromisoformat(date_range["start"]))
             except ValueError:
                 since = None
         contacts = await search_queries.get_contacts_by_category(
@@ -897,7 +957,9 @@ async def search(
         due_by = filters.get("due_by")
         if due_by:
             try:
-                tasks = await task_queries.list_tasks_due_by(db, datetime.fromisoformat(due_by))
+                tasks = await task_queries.list_tasks_due_by(
+                    db, ensure_aware(datetime.fromisoformat(due_by))
+                )
             except ValueError:
                 tasks = await task_queries.list_pending_tasks(db, limit=50)
         else:
@@ -909,7 +971,7 @@ async def search(
         date_range = filters.get("date_range") or {}
         if date_range.get("start"):
             try:
-                since = datetime.fromisoformat(date_range["start"])
+                since = ensure_aware(datetime.fromisoformat(date_range["start"]))
             except ValueError:
                 since = None
         interactions = await search_queries.get_interactions_by_company(
@@ -929,6 +991,7 @@ async def search(
         .limit(100)
     )
     all_contacts = list(result.scalars().all())
+    contacts_by_id = {c.id: c for c in all_contacts}
 
     contacts_data = [
         {
@@ -955,11 +1018,21 @@ async def search(
         matches = search_result if search_result else []
         explanation = ""
 
+    # Re-serialize through the same helper the deterministic intents use.
+    # This branch previously returned the richer contacts_data dicts (with
+    # notes/context/interactions), so /api/search emitted two different contact
+    # shapes depending on which intent the LLM happened to pick.
+    matched_contacts = [
+        contacts_by_id[m["id"]]
+        for m in matches
+        if isinstance(m, dict) and m.get("id") in contacts_by_id
+    ]
+
     return {
         "query": q,
         "intent": "semantic_search",
         "explanation": explanation,
-        "contacts": matches,
+        "contacts": _serialize_contacts_brief(matched_contacts),
         "interactions": [],
         "tasks": [],
     }
