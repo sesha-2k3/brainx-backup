@@ -13,7 +13,6 @@ class ProposalResponse(BaseModel):
     """Proposal data response."""
 
     id: str
-    tenant_id: str
     source_type: str
     whatsapp_user_id: str
     extracted_data: dict
