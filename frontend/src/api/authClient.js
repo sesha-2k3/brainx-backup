@@ -34,10 +34,14 @@ export async function registerUser({ email, password }) {
 
 /**
  * Log in with email + password.
+ *
+ * @param {boolean} [rememberMe] - requests a long-lived token. Sent as
+ *   `remember_me` because that is the field name the backend's LoginRequest
+ *   schema declares; a camelCase key is silently discarded by Pydantic.
  * @returns {{ access_token: string, token_type: string }}
  */
-export async function loginUser({ email, password }) {
-  return authRequest('/auth/login', { email, password })
+export async function loginUser({ email, password, rememberMe = false }) {
+  return authRequest('/auth/login', { email, password, remember_me: rememberMe })
 }
 
 /**
