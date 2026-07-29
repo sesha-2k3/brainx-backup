@@ -20,6 +20,9 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    # Was absent, so Pydantic silently discarded the flag the login form sends -
+    # the "Remember me" checkbox in LoginPage.jsx had no effect whatsoever.
+    remember_me: bool = False
 
 
 class TokenResponse(BaseModel):
