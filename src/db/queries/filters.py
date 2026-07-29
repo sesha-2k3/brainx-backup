@@ -1,10 +1,8 @@
-"""
-Queries: Reusable SQL filter builders
-
-Lives here rather than in src/utils/text.py on purpose: this module builds
-SQLAlchemy expressions, and utils/text.py is pure-logic (its tests run with
-zero doubles and no DB import). Keeping the layering intact.
-"""
+# Queries: Reusable SQL filter builders
+#
+# Lives here rather than in src/utils/text.py on purpose: this module builds
+# SQLAlchemy expressions, and utils/text.py is pure-logic (its tests run with
+# zero doubles and no DB import). Keeping the layering intact.
 
 from sqlalchemy import ColumnElement, and_, or_
 from sqlalchemy.orm import InstrumentedAttribute
