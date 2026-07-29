@@ -1,7 +1,13 @@
 # Docker Compose for local development
 services:
   postgres:
-    image: postgres:15-alpine
+    # pgvector/pgvector:pg15 is plain Postgres 15 with the vector extension
+    # available. Same data directory layout as postgres:15-alpine, so an
+    # existing volume keeps working - but the extension still has to be enabled
+    # per-database, which the first embeddings migration should do:
+    #   op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # Note this image is Debian-based, not Alpine, so it is a larger pull.
+    image: pgvector/pgvector:pg15
     container_name: personal-crm-db
     environment:
       POSTGRES_USER: crm
