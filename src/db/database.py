@@ -159,23 +159,12 @@ async_session_factory = async_sessionmaker(
 # Dependency injection
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Tenant-scoped database session for API endpoints.
-
-    Reads tenant_id from settings. Every query automatically
-    filters by this tenant. Every new object gets it stamped.
-    """
-    tenant_id = settings.tenant_id
-    factory = _tenant_session_factory(tenant_id)
-
-    async with factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+# NOTE: there is deliberately no settings-based `get_db()` here anymore.
+# It resolved tenant_id from settings.tenant_id (a literal "default"), which
+# can never be valid now that Contact.tenant_id is a UUID FK to users.id - any
+# insert through it would fail on the FK, and any SELECT would silently scope
+# to a tenant that doesn't exist. Use `get_db_for_user` (src/db/__init__.py)
+# for request-scoped work, or `get_db_unscoped` for the non-tenant cases below.
 
 
 async def get_db_unscoped() -> AsyncGenerator[AsyncSession, None]:
