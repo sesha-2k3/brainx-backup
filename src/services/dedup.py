@@ -38,28 +38,34 @@ async def find_duplicate(
             logger.info(f"Found duplicate by email/phone: {duplicate.id} ({duplicate.name})")
             return duplicate
 
-    # Then try name + company match
+    # Then try name + company match.
+    #
+    # Name alone is deliberately NOT enough when either side has a company:
+    # "John Smith" at Acme and "John Smith" at Globex are two people, and
+    # silently merging them is unrecoverable (the interaction history of one
+    # gets grafted onto the other). This previously matched whenever *either*
+    # side lacked a company, which made common names collide constantly.
     if name:
         contacts = await contact_queries.search_contacts_by_name(db, name, limit=10)
         for contact in contacts:
             contact_name = contact.name.strip().lower() if contact.name else ""
             contact_company = contact.company.strip().lower() if contact.company else ""
 
-            # Exact name match
-            if contact_name == name:
-                # If both have company, they must match
-                if company and contact_company:
-                    if company == contact_company:
-                        logger.info(f"Found duplicate by name+company: {contact.id}")
-                        return contact
-                # If no company info, name match is enough
-                elif not company and not contact_company:
-                    logger.info(f"Found duplicate by name: {contact.id}")
+            if contact_name != name:
+                continue
+
+            if company and contact_company:
+                # Both known: they must agree.
+                if company == contact_company:
+                    logger.info(f"Found duplicate by name+company: {contact.id}")
                     return contact
-                # If only one has company, still consider it a match
-                elif not company or not contact_company:
-                    logger.info(f"Found duplicate by name (partial company): {contact.id}")
-                    return contact
+            elif not company and not contact_company:
+                # Neither known: name match is all we have, and all we can use.
+                logger.info(f"Found duplicate by name: {contact.id}")
+                return contact
+            # Exactly one side has a company -> ambiguous, treat as a different
+            # person. The confirm screen still shows the user what exists, and
+            # a genuine duplicate can be merged deliberately later.
 
     logger.info("No duplicate found")
     return None
@@ -101,8 +107,15 @@ async def merge_or_create(
                 updates["context"] = f"{existing_context}\n{extracted.context}".strip()
 
         if updates:
-            duplicate = await contact_queries.update_contact(db, duplicate.id, **updates)
-            logger.info(f"Updated existing contact {duplicate.id} with new fields")
+            updated = await contact_queries.update_contact(db, duplicate.id, **updates)
+            # update_contact returns None if the row vanished between the
+            # lookup and the write. Keep the object we already have rather
+            # than dereferencing None on the next line.
+            if updated is not None:
+                duplicate = updated
+                logger.info(f"Updated existing contact {duplicate.id} with new fields")
+            else:
+                logger.warning(f"Contact {duplicate.id} disappeared before merge could be applied")
 
         return duplicate, False
 
