@@ -42,12 +42,81 @@ def extract_emails(text: str) -> list[str]:
     return re.findall(pattern, text.lower())
 
 
+# Domains a business card or a pasted note will realistically carry. This is an
+# allowlist rather than a generic `\.[a-z]{2,}` rule on purpose: the loose
+# version happily reads "notes.txt", "report.pdf", "app.js" and "e.g." as
+# websites. Ambiguous TLDs that collide with common file extensions (.sh, .py,
+# .rs, .md) are deliberately omitted - a missed website is recoverable by hand,
+# a garbage one silently pollutes the contact record.
+_URL_TLDS = (
+    # generic
+    "com|net|org|edu|gov|mil|int|info|biz|name|pro|xyz|online|site|website|"
+    "store|shop|tech|dev|app|cloud|digital|agency|studio|design|media|news|"
+    "blog|wiki|email|group|team|works|solutions|systems|consulting|capital|"
+    "ventures|partners|finance|health|law|academy|institute|foundation|"
+    # common ccTLD / vanity
+    "io|ai|co|me|tv|cc|gg|ly|to|us|uk|ca|au|nz|de|fr|es|it|nl|se|no|dk|fi|"
+    "pl|pt|gr|ie|be|at|ch|cz|ro|hu|ru|ua|tr|il|ae|sa|za|ng|ke|eg|in|pk|bd|"
+    "lk|np|cn|jp|kr|tw|hk|sg|my|th|vn|ph|id|br|mx|ar|cl|co\\.uk|co\\.in|"
+    "com\\.au|com\\.br|co\\.za|co\\.jp|co\\.nz"
+)
+
+_URL_PATTERN = re.compile(
+    r"""
+    (?<![\w@.\-])                       # not mid-word, and not the domain half of an email
+    (?:(?P<scheme>https?://)|www\.)?    # optional scheme, or a bare www.
+    (?P<host>
+        (?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+   # one or more dot-separated labels
+        (?:"""
+    + _URL_TLDS
+    + r""")
+    )
+    \b
+    (?P<path>/[^\s<>"'{}|\\^`\[\]]*)?   # optional path/query
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
 def extract_urls(text: str) -> list[str]:
     """
-    Extract all URLs from text.
+    Extract website URLs from free text, including scheme-less ones.
+
+    Business cards and pasted notes overwhelmingly write "acme.com" or
+    "www.acme.com" rather than "https://acme.com", so requiring a scheme (as
+    this function used to) meant the website field almost never populated.
+
+    Returned URLs are normalized to include a scheme, so the value is directly
+    usable as an href. Email addresses are excluded - their domain half would
+    otherwise match. Order is preserved and duplicates are removed.
     """
-    pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
-    return re.findall(pattern, text)
+    if not text:
+        return []
+
+    # Strip emails first so "sam@acme.com" doesn't yield "acme.com" as a site.
+    # (An email is a strong signal on a business card, but it isn't a website.)
+    without_emails = re.sub(r"[\w.\-+]+@[\w.\-]+\.\w+", " ", text)
+
+    seen: set[str] = set()
+    results: list[str] = []
+
+    for match in _URL_PATTERN.finditer(without_emails):
+        host = match.group("host")
+        path = match.group("path") or ""
+        scheme = match.group("scheme") or "https://"
+
+        # Rebuild from parts so "www.acme.com" and "acme.com" don't both need
+        # separate handling, and so the trailing sentence punctuation that
+        # \b happily includes in a path gets trimmed.
+        path = path.rstrip(".,;:!?)")
+        url = f"{scheme}{host}{path}"
+
+        key = url.lower()
+        if key not in seen:
+            seen.add(key)
+            results.append(url)
+
+    return results
 
 
 def normalize_name(name: str | None) -> str:

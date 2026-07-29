@@ -1,10 +1,27 @@
 # Utils: Date parsing for natural language dates
 
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
+
+
+def ensure_aware(dt: datetime | None) -> datetime | None:
+    """
+    Attach UTC to a naive datetime, leave aware ones alone.
+
+    Every DateTime column in models.py is `timezone=True`, and every query
+    compares against datetime.now(UTC). Anything this module hands back must
+    therefore be aware, or it will either raise on comparison or be written
+    to Postgres with an assumed offset. Also used to defensively normalize
+    datetimes read back from stores that lose tzinfo (e.g. SQLite in tests).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 def parse_relative_date(date_str: str | None) -> datetime | None:
@@ -16,7 +33,7 @@ def parse_relative_date(date_str: str | None) -> datetime | None:
         return None
 
     date_str = date_str.lower().strip()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Word to number mapping
@@ -88,11 +105,13 @@ def parse_relative_date(date_str: str | None) -> datetime | None:
                 days_ahead += 7
             return today + timedelta(days=days_ahead)
 
-    # Try parsing as absolute date
+    # Try parsing as absolute date. dateutil returns a naive datetime unless
+    # the input carried an explicit offset, so normalize before returning -
+    # this value flows straight into Task.due_date (a timestamptz column).
     try:
         parsed = date_parser.parse(date_str, fuzzy=True)
-        return parsed.replace(hour=0, minute=0, second=0, microsecond=0)
-    except (ValueError, TypeError):
+        return ensure_aware(parsed.replace(hour=0, minute=0, second=0, microsecond=0))
+    except (ValueError, TypeError, OverflowError):
         pass
 
     return None
@@ -105,7 +124,10 @@ def format_relative_date(dt: datetime | None) -> str:
     if not dt:
         return "No date"
 
-    now = datetime.utcnow()
+    # dt may arrive naive (e.g. read back from SQLite in tests); normalizing
+    # both sides keeps the subtraction below from raising on mixed awareness.
+    dt = ensure_aware(dt)
+    now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     target = dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
