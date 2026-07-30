@@ -55,27 +55,34 @@ def _make_token(payload: dict) -> str:
     return jwt.encode(payload, s.jwt_secret, algorithm=s.jwt_algorithm)
 
 
+# Fixed ids for readable failures. Each one deliberately contains a hex LETTER.
+#
+# SQLAlchemy stores a UUID as its 32-char hex with hyphens stripped, and on SQLite
+# the "UUID" column type gets NUMERIC affinity. An all-digit hex is therefore a
+# well-formed integer literal, overflows int64, and comes back as a float:
+#
+#     "11111111-1111-4111-8111-111111111111"
+#       -> "11111111111141118111111111111111" -> 1.1111111111141117e+31
+#
+# which then crashes the Uuid RESULT processor deep inside an unrelated request.
+# tests/conftest.py now forces TEXT affinity for UUID columns, which fixes the
+# root cause; keeping a letter in each id means these tests do not silently
+# depend on that remap staying in place.
+
+
 async def _make_user(db, *, user_id: str, email: str, password: str, is_active: bool = True):
     """
-    Insert a User, supplying created_at/updated_at EXPLICITLY.
+    Insert a User, supplying created_at/updated_at explicitly.
 
-    Those columns use server_default=func.now(), so when they are omitted
-    SQLAlchemy has to read the generated values back from SQLite after the
-    INSERT. On this stack that post-fetch returns a float where the DateTime
-    result processor expects a string, and the attribute population blows up with:
+    Those columns use server_default=func.now(), so omitting them leaves the
+    attributes unloaded after flush and forces a post-INSERT fetch. Supplying
+    them keeps the object fully populated, which makes the fixture cheaper and
+    its state obvious.
 
-        AttributeError: 'float' object has no attribute 'replace'
-
-    The failure surfaces later and elsewhere — inside the request handler that
-    re-selects the row — which is why it looked unrelated to the insert.
-
-    The register endpoint avoids it by calling `await db.refresh(user)`
-    immediately after flush, which issues a normal SELECT with the right result
-    processors bound. That is why TestRegister passed while these tests did not.
-
-    Passing the timestamps explicitly is the smaller fix: with no server-generated
-    values outstanding there is no post-fetch to go wrong. `await db.refresh(user)`
-    after the flush works too if you prefer to mirror the router exactly.
+    NOTE: this is NOT what caused the 'float' object has no attribute 'replace'
+    error. That was the UUID affinity problem described above the function — the
+    id column, not these timestamps. Kept because it is still the better way to
+    build a fixture row, but it was not the fix.
     """
     now = datetime.now(UTC)
     user = User(
@@ -307,7 +314,7 @@ class TestLogin:
     async def test_correct_credentials_return_a_token(self, client, db):
         await _make_user(
             db,
-            user_id="11111111-1111-4111-8111-111111111111",
+            user_id="a1111111-1111-4111-8111-11111111111a",
             email="login.ok@example.com",
             password="password123",
         )
@@ -323,7 +330,7 @@ class TestLogin:
     async def test_wrong_password_returns_401(self, client, db):
         await _make_user(
             db,
-            user_id="22222222-2222-4222-8222-222222222222",
+            user_id="b2222222-2222-4222-8222-22222222222b",
             email="login.bad@example.com",
             password="password123",
         )
@@ -341,7 +348,7 @@ class TestLogin:
         """
         await _make_user(
             db,
-            user_id="33333333-3333-4333-8333-333333333333",
+            user_id="c3333333-3333-4333-8333-33333333333c",
             email="exists@example.com",
             password="password123",
         )
@@ -361,7 +368,7 @@ class TestLogin:
     async def test_deactivated_account_returns_403(self, client, db):
         await _make_user(
             db,
-            user_id="44444444-4444-4444-8444-444444444444",
+            user_id="d4444444-4444-4444-8444-44444444444d",
             email="deactivated@example.com",
             password="password123",
             is_active=False,
@@ -425,7 +432,7 @@ class TestCurrentUserDependency:
         exists. Covers the `if user is None` branch — the path that matters if an
         account is removed while a token is still in the wild.
         """
-        orphan = create_access_token(subject="99999999-9999-4999-8999-999999999999")
+        orphan = create_access_token(subject="f9999999-9999-4999-8999-99999999999f")
 
         resp = await anon_client.get("/api/auth/me", headers={"Authorization": f"Bearer {orphan}"})
         assert resp.status_code == 401
@@ -434,7 +441,7 @@ class TestCurrentUserDependency:
         """A valid token must stop working once the account is disabled."""
         user = await _make_user(
             db,
-            user_id="55555555-5555-4555-8555-555555555555",
+            user_id="e5555555-5555-4555-8555-55555555555e",
             email="disabled.later@example.com",
             password="password123",
             is_active=False,
