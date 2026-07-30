@@ -41,19 +41,21 @@ from uuid import uuid4
 # ---------------------------------------------------------------------------
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("GROQ_API_KEY", "test-fake-key")
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
+# 32+ bytes: PyJWT emits InsecureKeyLengthWarning below the RFC 7518 minimum
+# for SHA-256, which produced 25 warnings per auth run.
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-0123456789abcdef")
 os.environ.setdefault("APP_ENV", "testing")
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import event
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.types import JSON
+from sqlalchemy.types import JSON, String
 
 from src.db.database import Base, TenantSession
 from src.db.models import User
@@ -78,13 +80,49 @@ from src.db.models import User
 
 
 @event.listens_for(Base.metadata, "before_create")
-def _remap_jsonb_for_sqlite(target, connection, **kw):
-    """Swap JSONB → JSON before table creation on SQLite."""
-    if connection.dialect.name == "sqlite":
-        for table in target.tables.values():
-            for column in table.columns:
-                if isinstance(column.type, JSONB):
-                    column.type = JSON()
+def _remap_pg_types_for_sqlite(target, connection, **kw):
+    """
+    Swap PostgreSQL-only column types for SQLite equivalents before CREATE TABLE.
+
+    JSONB -> JSON is the obvious one: JSONB has no SQLite compiler at all, so
+    create_all() fails outright without this.
+
+    UUID -> String(32) is subtler and produced a genuinely baffling failure.
+    SQLAlchemy renders postgresql.UUID as the column type "UUID" on SQLite, and
+    SQLite assigns affinity by substring: INT, CHAR, CLOB, TEXT, BLOB, REAL,
+    FLOA, DOUB. "UUID" matches none of them, so the column gets NUMERIC affinity.
+
+    Meanwhile the Uuid type's bind processor stores the hex form with hyphens
+    stripped — 32 characters. If that hex happens to be all digits, it is a
+    well-formed integer literal, and NUMERIC affinity converts it. 32 digits
+    overflows int64, so SQLite promotes it to REAL:
+
+        "11111111-1111-4111-8111-111111111111"
+          -> stored as "11111111111141118111111111111111"
+          -> read back as 1.1111111111141117e+31
+
+    The read then explodes inside the Uuid RESULT processor:
+
+        value = str(_python_UUID(value))
+        AttributeError: 'float' object has no attribute 'replace'
+
+    ...several frames deep inside an unrelated request handler, with nothing
+    pointing at the id that caused it.
+
+    The trap is that it only fires for UUIDs whose hex is entirely numeric.
+    A real uuid4 almost always contains a hex letter, so it stays TEXT and works
+    — which is why the suite passed for months and only broke on hand-written
+    ids like "11111111-1111-...". Forcing TEXT affinity removes the whole class.
+    """
+    if connection.dialect.name != "sqlite":
+        return
+
+    for table in target.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, JSONB):
+                column.type = JSON()
+            elif isinstance(column.type, UUID):
+                column.type = String(32)
 
 
 # ---------------------------------------------------------------------------
