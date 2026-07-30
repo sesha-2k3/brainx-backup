@@ -3,17 +3,18 @@
 # ============================================================================
 #
 # Stages:
-#   1. lint      → ruff check + ruff format --check (fast fail)
-#   2. typecheck → mypy on src/ (catches type errors early)
-#   3. test      → pytest with coverage against in-memory SQLite
-#   4. deploy    → placeholder (runs only on main after all checks pass)
+#   1. lint        → ruff check + ruff format --check (fast fail)
+#   2. typecheck   → mypy on src/ (currently non-blocking)
+#   3. test        → pytest with coverage against in-memory SQLite, 3.11 + 3.12
+#   4. test-pg     → the same suite against real PostgreSQL (main/nightly only)
+#   5. deploy      → placeholder, gated on everything above
 #
 # Design decisions:
-#   - Separate jobs so lint failures don't waste test runner time
-#   - PostgreSQL NOT needed: tests use async SQLite (fake DB)
-#   - No real Groq API calls: tests stub the foreign system boundary
-#   - All dev deps from pyproject.toml [project.optional-dependencies.dev]
-#   - Coverage threshold enforced (fail_under in pyproject.toml)
+#   - Separate jobs so lint failures don't burn test-runner time
+#   - SQLite for the fast path; a periodic real-Postgres run to catch places
+#     where the fake and production disagree (see the test-pg job)
+#   - No real Groq calls: tests stub that boundary
+#   - Dev deps come from pyproject.toml [project.optional-dependencies.dev]
 # ============================================================================
 
 name: CI/CD
@@ -25,6 +26,7 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
+      - "alembic/**"
       - ".github/workflows/**"
   pull_request:
     branches: [main]
@@ -32,11 +34,16 @@ on:
       - "src/**"
       - "tests/**"
       - "pyproject.toml"
+      - "alembic/**"
       - ".github/workflows/**"
+  schedule:
+    # Nightly, so the Postgres job runs even on quiet days.
+    - cron: "0 3 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Do NOT cancel on main: a cancelled run mid-deploy is worse than a slow queue.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -44,11 +51,31 @@ permissions:
   pull-requests: write
 
 env:
-  PYTHON_VERSION: "3.12"
+  # Matches requires-python = ">=3.11" and ruff's target-version = "py311".
+  # The previous single "3.12" meant CI ran a different interpreter from local
+  # development (3.11.14), which matters here: datetime.utcnow() is deprecated in
+  # 3.12, so warning-related failures differ between the two.
+  DEFAULT_PYTHON: "3.11"
+
+  # Shared test environment. Settings declares database_url and groq_api_key with
+  # NO defaults and src/db/database.py calls get_settings() at module import, so
+  # the very first `from src...` fails without these.
+  #
+  # JWT_SECRET must be >= 32 bytes: HS256 is HMAC-SHA256 and RFC 7518 section 3.2
+  # requires a key at least as long as the hash output. PyJWT warns below that,
+  # and if config.py gains the length validator this becomes a hard failure.
+  #
+  # TENANT_ID was removed from the env list. That setting no longer exists —
+  # tenancy is per-user now, and SettingsConfigDict(extra="ignore") meant the
+  # stale value was silently discarded rather than flagged.
+  DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+  GROQ_API_KEY: "test-fake-key"
+  JWT_SECRET: "ci-only-secret-not-for-production-0123456789abcdef"
+  APP_ENV: "testing"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
-  # Stage 1: Lint & Format Check
+  # Stage 1: Lint & Format
   # ─────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint & Format
@@ -59,10 +86,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ env.DEFAULT_PYTHON }}
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned. An unpinned `pip install ruff` means a new ruff release can
+        # turn a green main red with no change on your side — new rules land in
+        # the selected rulesets regularly.
+        run: pip install "ruff==0.14.*"
 
       - name: Check linting rules
         run: ruff check src/ tests/
@@ -82,63 +112,63 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
-          restore-keys: ${{ runner.os }}-pip-
+          python-version: ${{ env.DEFAULT_PYTHON }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install project with dev deps
         run: pip install -e ".[dev]"
 
       - name: Run mypy
-        run: mypy src/ --ignore-missing-imports --no-error-summary || true
-        # NOTE: Start non-blocking (|| true). Remove when types are clean.
+        # Flags come from [tool.mypy] in pyproject.toml rather than being
+        # duplicated here, so local and CI runs agree.
+        #
+        # `|| true` makes this job pass unconditionally, which means listing it
+        # in the deploy `needs:` provides no protection at all. Keep it while the
+        # baseline is noisy, but be aware the gate is decorative until removed.
+        run: mypy || true
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Stage 3: Test with Coverage
+  # Stage 3: Test (SQLite, fast path)
   # ─────────────────────────────────────────────────────────────────────────
   test:
-    name: Test
+    name: Test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: [lint]
-    env:
-      # Dummy env vars so pydantic Settings loads during import
-      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-      GROQ_API_KEY: "test-fake-key"
-      APP_ENV: "testing"
-      TENANT_ID: "test-tenant"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both, because the project supports both. 3.11 is what you develop on;
+        # 3.12 is what the old single-version config was actually testing.
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
-          restore-keys: ${{ runner.os }}-pip-
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install project with dev deps
+        # Requires [build-system] in pyproject.toml. Without it pip falls back to
+        # legacy setuptools, whose auto-discovery sees the top-level src/
+        # directory, infers a "src layout", and installs api/, auth/, db/ … as
+        # top-level packages instead of as src.*. It happens to still work here
+        # because pytest runs from the repo root and picks src up off the CWD, but
+        # it is working by accident.
         run: pip install -e ".[dev]"
 
       - name: Run tests with coverage
         run: |
           pytest tests/ \
             --cov=src \
+            --cov-branch \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --junitxml=junit-results.xml \
             -v
-
-      # ── Reporting: visible directly in the Actions UI and PR checks ──
 
       - name: Test results summary
         if: always()
@@ -146,32 +176,106 @@ jobs:
         with:
           files: junit-results.xml
           comment_mode: off
-          check_name: Test Results
+          check_name: Test Results (py${{ matrix.python-version }})
 
       - name: Coverage summary on PR
-        if: github.event_name == 'pull_request'
+        # Only from the primary interpreter, or the PR gets two conflicting
+        # coverage comments for the same diff.
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
         uses: orgoro/coverage@v3.2
         with:
           coverageFile: coverage.xml
           token: ${{ secrets.GITHUB_TOKEN }}
-          thresholdAll: 50
+          # Raise this as coverage climbs. Leaving it at 50 while the real figure
+          # is ~80% means the gate cannot catch a regression until four fifths of
+          # the progress has been undone.
+          thresholdAll: 0.78
+          thresholdNew: 0.90
+          thresholdModified: 0.80
 
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          # Names must be unique per matrix leg with upload-artifact@v4.
+          name: coverage-report-py${{ matrix.python-version }}
           path: coverage.xml
 
       - name: Upload test results artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-py${{ matrix.python-version }}
           path: junit-results.xml
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Stage 4: Deploy Gate (only on main, after all checks pass)
+  # Stage 4: Test against real PostgreSQL
+  #
+  # The SQLite suite is fast but it is a FAKE, and tests/conftest.py has to
+  # rewrite two column types to make it work at all: JSONB -> JSON and
+  # UUID -> String(32). Anything that depends on those types behaving like
+  # Postgres is untested by the fast path. Known divergences:
+  #
+  #   - SQLite has no native JSONB; JSONB containment/path queries cannot run
+  #   - SQLite ignores foreign keys unless PRAGMA foreign_keys=ON is set
+  #   - ILIKE is emulated via lower() LIKE lower()
+  #   - SQLite is dynamically typed, so a naive datetime inserted into a
+  #     timestamptz column is accepted where Postgres would reject or shift it
+  #
+  # Running on main and nightly rather than every PR keeps the feedback loop
+  # short while still catching fake/real drift before it reaches production.
+  # ─────────────────────────────────────────────────────────────────────────
+  test-postgres:
+    name: Test (PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    services:
+      postgres:
+        # Same image as docker-compose.yml, so the vector extension is available
+        # for the planned embeddings work.
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: brainx
+          POSTGRES_PASSWORD: brainx
+          POSTGRES_DB: brainx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brainx"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql+asyncpg://brainx:brainx@localhost:5432/brainx_test"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project with dev deps
+        run: pip install -e ".[dev]"
+
+      - name: Apply migrations
+        # Exercises the migration chain, which the SQLite path skips entirely
+        # because conftest builds the schema with Base.metadata.create_all().
+        # A migration that drifts from the models is invisible until here.
+        run: alembic upgrade head
+
+      - name: Run tests
+        # NOTE: this requires tests/conftest.py to honour DATABASE_URL instead of
+        # hardcoding sqlite+aiosqlite:///:memory: in the async_engine fixture.
+        # Until that change lands this job will still run against SQLite and tell
+        # you nothing new — see the note in the PR description.
+        run: pytest tests/ -v
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 5: Deploy gate
   # ─────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy
@@ -184,6 +288,6 @@ jobs:
       - name: Deploy placeholder
         run: |
           echo "All checks passed. Ready to deploy."
-          # TODO: Add your deployment steps here, e.g.:
+          # TODO: real deployment steps, e.g.
           #   docker build -t brainx:${{ github.sha }} .
           #   docker push your-registry/brainx:${{ github.sha }}
