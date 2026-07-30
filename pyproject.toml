@@ -22,16 +22,30 @@ dependencies = [
     "groq>=0.4.0",
     "pytesseract>=0.3.10",
     "Pillow>=10.2.0",
+    # Auth
+    "pyjwt>=2.8.0",
+    "bcrypt>=4.1.0",
     # Utilities
     "python-dateutil>=2.8.2",
     "phonenumbers>=8.13.0",
     "tenacity>=8.2.0",
     # Background tasks
     "apscheduler>=3.10.4",
-    "pre-commit>=4.5.1",
-    "psycopg2-binary>=2.9.11",
-    "pyjwt>=2.12.1",
-    "bcrypt>=5.0.0",
+
+    # REMOVED from this list:
+    #
+    # "psycopg2-binary" - nothing imports it. alembic/env.py uses
+    #   async_engine_from_config(), i.e. asyncpg. It was a compiled dependency
+    #   (needs libpq / pg_config to build on some platforms) serving nothing.
+    #
+    # "pre-commit" - a developer tool, not a runtime dependency. Listing it here
+    #   shipped it to production along with its tree (virtualenv, nodeenv, cfgv,
+    #   identify). Moved to the dev extra.
+    #
+    # Needed later, when the pgvector work in temp3.md lands - it supplies the
+    #   SQLAlchemy Vector column type, which is separate from the Postgres
+    #   extension already available in the pgvector/pgvector:pg15 image:
+    # "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -40,30 +54,87 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
-    # Async SQLite for test fake DB (no Postgres needed in CI)
-    "aiosqlite>=0.20.0",
-    # Type checking
     "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+    # Async SQLite driver.
+    #
+    # WARNING: SQLite cannot currently host these models. models.py imports
+    # JSONB and UUID from sqlalchemy.dialects.postgresql and uses them
+    # unconditionally, and neither type has a SQLite compiler - so
+    # Base.metadata.create_all() against SQLite raises
+    # UnsupportedCompilationError before a single test body runs.
+    #
+    # Two ways to make the "no Postgres needed in CI" comment true:
+    #   1. Switch to the dialect-agnostic generic types: sqlalchemy.Uuid and
+    #      sqlalchemy.JSON (both SQLAlchemy 2.0+, both render correctly on
+    #      Postgres and SQLite), or attach .with_variant() fallbacks.
+    #   2. Run CI against a real Postgres service container and drop aiosqlite.
+    #
+    # Option 2 is the safer default: the tenant isolation layer, the JSONB
+    # columns and the ILIKE-based search all behave differently on SQLite, so a
+    # green SQLite suite would not tell you much about production anyway.
+    "aiosqlite>=0.20.0",
 ]
 
 prod = [
     "gunicorn>=21.0.0",
-    "sentry-sdk[fastapi]>=1.0",
+    # Pinned to 2.x: sentry-sdk 2.0 changed the initialization and integration
+    # API, so a ">=1.0" floor silently resolves to a version the 1.x-era setup
+    # code does not work with.
+    "sentry-sdk[fastapi]>=2.0,<3.0",
 ]
 
-# Pytest 
+# ---------------------------------------------------------------------------
+# Build configuration
+#
+# This section was missing, which mattered the moment requirements.txt became
+# "-e .". Without it:
+#
+#   * pip falls back to the legacy setuptools backend, and
+#   * setuptools auto-discovery sees a top-level src/ directory, infers the
+#     conventional "src layout", and looks for packages INSIDE src/ - installing
+#     api, auth, db, services and utils as top-level packages.
+#
+# That breaks every `from src.db import ...` in the codebase. The project has so
+# far avoided the issue by never being installed at all: `uvicorn src.main:app`
+# run from the repository root puts the CWD on sys.path, so `src` resolves as a
+# directory rather than an installed package.
+#
+# Declaring the layout explicitly makes the project genuinely installable, which
+# also removes the CWD dependency - pytest and alembic stop caring which
+# directory they were invoked from.
+# ---------------------------------------------------------------------------
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+# Pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = [
-    "asyncio: async test functions",
-]
+# NOTE: the manual `markers = ["asyncio: ..."]` entry was removed. pytest-asyncio
+# registers that marker itself, so declaring it again is redundant and can
+# produce a duplicate-registration warning. --strict-markers still applies to
+# any marker you add yourself.
 addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
 ]
 filterwarnings = [
+    # Deliberately NOT "ignore::DeprecationWarning".
+    #
+    # A blanket ignore hides exactly the class of bug just fixed: dates.py used
+    # datetime.utcnow(), deprecated in Python 3.12, which was producing naive
+    # datetimes that flowed into timezone-aware columns. Python was warning
+    # about it and the test suite was configured not to listen.
+    #
+    # Errors on first-party deprecations, ignores third-party noise.
+    "error::DeprecationWarning:src.*",
     "ignore::DeprecationWarning",
     "ignore::sqlalchemy.exc.SAWarning",
 ]
@@ -83,12 +154,25 @@ show_missing = true
 #   60% → after adding query_parser + transcription tests
 #   70% → after adding OCR + full API input processing tests
 #   80% → target for mature project
+#
+# Expect this number to move after the recent changes: three new modules
+# (db/queries/filters.py, schemas/fields.py, services/confirmation.py) have no
+# tests yet, while some deleted code was also untested. Measure before assuming
+# the threshold still passes.
 fail_under = 50
 exclude_lines = [
+    # These are regexes matched with re.search, NOT full-line matches, so a bare
+    # "pass" matched any line containing that substring - including
+    # `def hash_password(...)` and `def verify_password(...)`. Because excluding
+    # a line that opens a block excludes the whole block, both password
+    # functions in src/auth/service.py were silently omitted from coverage
+    # entirely. Anchored versions below.
     "pragma: no cover",
-    "if __name__ ==",
-    "pass",
-    "\\.\\.\\.",
+    "^\\s*if __name__ == ['\"]__main__['\"]:",
+    "^\\s*pass\\s*$",
+    "^\\s*\\.\\.\\.\\s*$",
+    "^\\s*raise NotImplementedError",
+    "^\\s*if TYPE_CHECKING:",
 ]
 
 # Ruff linter configs
@@ -108,6 +192,7 @@ select = [
     "N",     # pep8-naming
     "SIM",   # flake8-simplify
     "RUF",   # ruff-specific rules
+    "DTZ",   # flake8-datetimez - bans naive datetime constructors
 ]
 ignore = [
     "E501",   # line length (handled by formatter)
@@ -115,5 +200,35 @@ ignore = [
     "RUF012", # mutable class variables (SQLAlchemy models)
 ]
 
+# DTZ is newly enabled and is the lint-level counterpart to the timezone fixes:
+# it flags datetime.utcnow(), datetime.now() without tz, and naive
+# datetime.fromisoformat() results, so that bug class cannot silently return.
+# If it fires on existing code, fix rather than ignore - each hit is a real
+# naive datetime heading for a timestamptz column.
+
+[tool.ruff.lint.per-file-ignores]
+# Alembic migrations are generated and use their own conventions.
+"alembic/versions/*" = ["N999", "E402"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
+
+# Type checking. mypy was listed as a dev dependency with no configuration, so
+# running it produced an unusable flood of errors on untyped third-party calls.
+# This is a deliberately lenient starting point: it checks first-party code
+# without demanding annotations everywhere, so it can be turned on in CI today
+# and tightened later.
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+# Tighten these one at a time once the current output is clean:
+# disallow_untyped_defs = true
+# warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = "alembic.*"
+ignore_errors = true
