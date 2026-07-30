@@ -145,6 +145,7 @@ source = ["src"]
 omit = [
     "src/main.py",
     "src/config.py",
+    "tests/*",
 ]
 
 [tool.coverage.report]
