@@ -19,6 +19,19 @@ import pytest
 from src.db.queries import proposals as proposal_queries
 from src.schemas.contacts import ExtractedContactData, ExtractedTask
 
+# NOTE: create_proposal() no longer takes whatsapp_user_id. The column held the
+# literal "web" for every row, so the index on it had zero selectivity and the
+# per-user lookup that filtered on it matched everything. Dropped in migration
+# a1c4e7d92b58.
+#
+# The /api/proposals/{proposal_id} path param is deliberately NOT constrained to
+# a UUID shape, unlike /api/contacts/{contact_id}. The constraint exists on the
+# contact routes because literal siblings (/contacts/due-reminders,
+# /contacts/upcoming-reminders) could be shadowed by the parameterized route, and
+# a UUID pattern turns a silent 404 into an explicit 422. There are no literal
+# siblings under /proposals/, so the tests below can keep using "fake-id" and
+# still get the 404 they are actually asserting.
+
 
 @pytest.mark.asyncio
 class TestTextInput:
@@ -62,7 +75,6 @@ class TestGetProposal:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="web",
             extracted_data={"name": "Prop Person"},
         )
 
@@ -82,7 +94,6 @@ class TestConfirmProposal:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="web",
             extracted_data={
                 "name": "Confirm Person",
                 "email": "confirm@test.com",
@@ -119,7 +130,6 @@ class TestRejectProposal:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="web",
             extracted_data={"name": "Reject Person"},
         )
 
