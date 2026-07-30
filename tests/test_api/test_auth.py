@@ -23,9 +23,10 @@ WHY THE ODD ASSERTIONS ON STATUS CODES
 --------------------------------------
 Two results look wrong and are not:
 
-  - A request with NO Authorization header returns 403, not 401. HTTPBearer is
-    constructed with auto_error=True, so the security scheme rejects the request
-    before get_current_user runs.
+  - A request with NO Authorization header is rejected by HTTPBearer itself
+    (auto_error=True), before get_current_user's body runs. Current FastAPI
+    returns 401 for this; older releases returned 403. TestProtectedRoutesRequireAuth
+    accepts either, because the point there is unreachability, not the exact code.
   - An unknown email and a wrong password both return 401 with an identical body.
     That is deliberate: differing responses would let an attacker enumerate
     registered addresses.
@@ -52,6 +53,42 @@ def _make_token(payload: dict) -> str:
     """Sign an arbitrary payload with the app's real key and algorithm."""
     s = get_settings()
     return jwt.encode(payload, s.jwt_secret, algorithm=s.jwt_algorithm)
+
+
+async def _make_user(db, *, user_id: str, email: str, password: str, is_active: bool = True):
+    """
+    Insert a User, supplying created_at/updated_at EXPLICITLY.
+
+    Those columns use server_default=func.now(), so when they are omitted
+    SQLAlchemy has to read the generated values back from SQLite after the
+    INSERT. On this stack that post-fetch returns a float where the DateTime
+    result processor expects a string, and the attribute population blows up with:
+
+        AttributeError: 'float' object has no attribute 'replace'
+
+    The failure surfaces later and elsewhere — inside the request handler that
+    re-selects the row — which is why it looked unrelated to the insert.
+
+    The register endpoint avoids it by calling `await db.refresh(user)`
+    immediately after flush, which issues a normal SELECT with the right result
+    processors bound. That is why TestRegister passed while these tests did not.
+
+    Passing the timestamps explicitly is the smaller fix: with no server-generated
+    values outstanding there is no post-fetch to go wrong. `await db.refresh(user)`
+    after the flush works too if you prefer to mirror the router exactly.
+    """
+    now = datetime.now(UTC)
+    user = User(
+        id=user_id,
+        email=email,
+        hashed_password=hash_password(password),
+        is_active=is_active,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(user)
+    await db.flush()
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -268,14 +305,12 @@ class TestRegister:
 @pytest.mark.asyncio
 class TestLogin:
     async def test_correct_credentials_return_a_token(self, client, db):
-        db.add(
-            User(
-                id="11111111-1111-4111-8111-111111111111",
-                email="login.ok@example.com",
-                hashed_password=hash_password("password123"),
-            )
+        await _make_user(
+            db,
+            user_id="11111111-1111-4111-8111-111111111111",
+            email="login.ok@example.com",
+            password="password123",
         )
-        await db.flush()
 
         resp = await client.post(
             "/api/auth/login",
@@ -286,14 +321,12 @@ class TestLogin:
         assert decode_access_token(resp.json()["access_token"])
 
     async def test_wrong_password_returns_401(self, client, db):
-        db.add(
-            User(
-                id="22222222-2222-4222-8222-222222222222",
-                email="login.bad@example.com",
-                hashed_password=hash_password("password123"),
-            )
+        await _make_user(
+            db,
+            user_id="22222222-2222-4222-8222-222222222222",
+            email="login.bad@example.com",
+            password="password123",
         )
-        await db.flush()
 
         resp = await client.post(
             "/api/auth/login",
@@ -306,14 +339,12 @@ class TestLogin:
         No user enumeration. Both cases must return the same status AND the same
         body, or an attacker can discover which addresses are registered.
         """
-        db.add(
-            User(
-                id="33333333-3333-4333-8333-333333333333",
-                email="exists@example.com",
-                hashed_password=hash_password("password123"),
-            )
+        await _make_user(
+            db,
+            user_id="33333333-3333-4333-8333-333333333333",
+            email="exists@example.com",
+            password="password123",
         )
-        await db.flush()
 
         wrong_password = await client.post(
             "/api/auth/login",
@@ -328,15 +359,13 @@ class TestLogin:
         assert wrong_password.json() == unknown_email.json()
 
     async def test_deactivated_account_returns_403(self, client, db):
-        db.add(
-            User(
-                id="44444444-4444-4444-8444-444444444444",
-                email="deactivated@example.com",
-                hashed_password=hash_password("password123"),
-                is_active=False,
-            )
+        await _make_user(
+            db,
+            user_id="44444444-4444-4444-8444-444444444444",
+            email="deactivated@example.com",
+            password="password123",
+            is_active=False,
         )
-        await db.flush()
 
         resp = await client.post(
             "/api/auth/login",
@@ -366,9 +395,15 @@ class TestCurrentUserDependency:
 
     async def test_no_credentials_are_rejected(self, anon_client):
         resp = await anon_client.get("/api/auth/me")
-        # 403, not 401 — HTTPBearer(auto_error=True) rejects before the
-        # dependency body runs. See the module docstring.
-        assert resp.status_code == 403
+        # 401 on this FastAPI version.
+        #
+        # I predicted 403 here and was wrong. HTTPBearer(auto_error=True) DID
+        # raise 403 "Not authenticated" in older FastAPI releases; current
+        # versions raise 401 with a WWW-Authenticate header, which is the
+        # correct code for "no credentials supplied" per RFC 7235. Either way
+        # the rejection happens in the security scheme, before
+        # get_current_user's body runs.
+        assert resp.status_code == 401
 
     async def test_malformed_token_returns_401(self, anon_client):
         resp = await anon_client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-jwt"})
@@ -397,14 +432,13 @@ class TestCurrentUserDependency:
 
     async def test_token_for_a_deactivated_user_returns_403(self, anon_client, db):
         """A valid token must stop working once the account is disabled."""
-        user = User(
-            id="55555555-5555-4555-8555-555555555555",
+        user = await _make_user(
+            db,
+            user_id="55555555-5555-4555-8555-555555555555",
             email="disabled.later@example.com",
-            hashed_password=hash_password("password123"),
+            password="password123",
             is_active=False,
         )
-        db.add(user)
-        await db.flush()
 
         token = create_access_token(subject=user.id)
 
