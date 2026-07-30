@@ -1,14 +1,6 @@
 """
 Test: authentication.
 
-There was no test_auth.py at all, which left the four lowest-covered modules in
-the codebase as the security-critical ones:
-
-    src/auth/service.py       30%
-    src/auth/dependencies.py  36%
-    src/auth/router.py        38%
-    src/auth/schemas.py       68%
-
 This file also puts the `authed_client` / `anon_client` fixtures to work. They
 were added to tests/test_api/conftest.py and never used, which is why that file
 itself sits at 46%.
