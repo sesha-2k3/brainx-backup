@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.db.queries import interactions as interaction_queries
+from src.db.queries import search as search_queries
 
 
 @pytest.mark.asyncio
@@ -26,11 +27,19 @@ class TestInteractionCreation:
         results = await interaction_queries.list_interactions_for_contact(db, contact.id)
         assert len(results) == 2
 
-    async def test_search_vector_populated(self, db, make_contact, make_interaction):
+    async def test_interaction_is_findable_by_summary(self, db, make_contact, make_interaction):
+        """
+        Replaces test_search_vector_populated, which asserted an attribute that
+        does not exist as a column on Interaction. The write path set it as a
+        plain instance attribute (SQLAlchemy allows that on unmapped names), so
+        nothing was persisted and the test merely read back what it had just
+        seen assigned. It could not have failed.
+        """
         contact = await make_contact(name="Bob")
         interaction = await make_interaction(contact.id, summary="Discussed AI partnership")
-        assert interaction.search_vector is not None
-        assert "ai partnership" in interaction.search_vector
+
+        results = await search_queries.search_all(db, "ai partnership")
+        assert any(i.id == interaction.id for i in results["interactions"])
 
 
 @pytest.mark.asyncio
@@ -64,7 +73,11 @@ class TestInteractionUpdate:
             db, interaction.id, summary="New summary"
         )
         assert updated.summary == "New summary"
-        assert "new summary" in updated.search_vector
+
+        # Asserting the new summary is searchable, rather than reading back an
+        # unmapped search_vector attribute that was never persisted.
+        results = await search_queries.search_all(db, "new summary")
+        assert any(i.id == interaction.id for i in results["interactions"])
 
     async def test_update_nonexistent_returns_none(self, db):
         result = await interaction_queries.update_interaction(db, "fake-id", summary="nope")

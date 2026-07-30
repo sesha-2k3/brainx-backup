@@ -21,7 +21,6 @@ class TestProposalCreation:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-123",
             extracted_data={"name": "Test Person", "company": "TestCo"},
         )
         assert proposal.status == ProposalStatus.PENDING
@@ -31,7 +30,6 @@ class TestProposalCreation:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="voice",
-            whatsapp_user_id="user-456",
             extracted_data={"name": "Another"},
         )
         found = await proposal_queries.get_proposal_by_id(db, proposal.id)
@@ -46,7 +44,6 @@ class TestProposalConfirmation:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-789",
             extracted_data={"name": "Confirmed Contact"},
         )
 
@@ -66,7 +63,6 @@ class TestProposalRejection:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-rej",
             extracted_data={"name": "Reject Me"},
         )
 
@@ -85,7 +81,6 @@ class TestProposalEdit:
         proposal = await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-edit",
             extracted_data={"name": "Original"},
         )
 
@@ -96,15 +91,23 @@ class TestProposalEdit:
 
 @pytest.mark.asyncio
 class TestPendingProposals:
-    async def test_get_pending_for_user(self, db):
+    async def test_get_latest_pending_is_tenant_scoped(self, db):
+        """
+        Replaces test_get_pending_for_user.
+
+        get_pending_proposal_for_user(whatsapp_user_id) is gone along with the
+        column it filtered on. That column held the literal "web" for every row,
+        so the filter matched everything and the only real scoping came from
+        TenantSession — meaning the function was safe by accident, not by design.
+        The replacement relies on the tenant filter explicitly.
+        """
         await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-pending",
             extracted_data={"name": "Pending Person"},
         )
 
-        pending = await proposal_queries.get_pending_proposal_for_user(db, "user-pending")
+        pending = await proposal_queries.get_latest_pending_proposal(db)
         assert pending is not None
         assert pending.extracted_data["name"] == "Pending Person"
 
@@ -112,7 +115,6 @@ class TestPendingProposals:
         await proposal_queries.create_proposal(
             db,
             source_type="text",
-            whatsapp_user_id="user-list",
             extracted_data={"name": "Listed"},
         )
 

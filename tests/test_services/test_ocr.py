@@ -87,50 +87,37 @@ class TestProcessBusinessCardBytes:
 
     @patch("src.services.ocr.extract_contact_data")
     @patch("src.services.ocr._run_ocr_sync")
-    async def test_regex_fallback_fills_missing_email(self, mock_ocr_sync, mock_extract):
-        # OCR finds email in raw text
-        mock_ocr_sync.return_value = (
-            "Bob Smith\nbob@company.com\n555-0100",
-            0.90,
-        )
+    async def test_confidence_is_a_zero_to_one_fraction(self, mock_ocr_sync, mock_extract):
+        """
+        The two entry points must agree on the confidence scale.
 
-        # But LLM misses the email
-        mock_extract.return_value = ExtractedContactData(
-            name="Bob Smith",
-            email=None,  # LLM missed it
-            company="SomeCo",
-        )
+        process_business_card used to compute its own average and return it raw
+        (0-100) while the bytes path divided by 100, so a threshold check like
+        `if confidence < 0.5` never fired for the file path and every card passed
+        review, including illegible ones. Both now share one code path.
+        """
+        mock_ocr_sync.return_value = ("Some Card Text", 0.42)
+        mock_extract.return_value = ExtractedContactData(name="Someone")
 
         from src.services.ocr import process_business_card_bytes
 
-        result = await process_business_card_bytes(b"fake-image")
+        result = await process_business_card_bytes(b"fake-image-bytes")
 
-        # Regex fallback should have filled in the email
-        assert result["extracted"].email == "bob@company.com"
-
-    @patch("src.services.ocr.extract_contact_data")
-    @patch("src.services.ocr._run_ocr_sync")
-    async def test_regex_fallback_fills_missing_phone(self, mock_ocr_sync, mock_extract):
-        mock_ocr_sync.return_value = (
-            "Carol White\n+12133734253",
-            0.80,
-        )
-
-        mock_extract.return_value = ExtractedContactData(
-            name="Carol White",
-            phone=None,  # LLM missed it
-        )
-
-        from src.services.ocr import process_business_card_bytes
-
-        result = await process_business_card_bytes(b"fake-image")
-        assert result["extracted"].phone is not None
+        assert 0.0 <= result["confidence"] <= 1.0
+        assert result["confidence"] == 0.42
 
 
-# ---------------------------------------------------------------------------
-# Foreign boundary: process_business_card (file-based)
-# ---------------------------------------------------------------------------
-@pytest.mark.asyncio
+# NOTE: test_regex_fallback_fills_missing_email and
+# test_regex_fallback_fills_missing_phone moved to
+# tests/test_services/test_extraction.py.
+#
+# Both patched src.services.ocr.extract_contact_data and then asserted that
+# process_business_card_bytes filled in email/phone from the raw OCR text. With
+# extraction stubbed out that merge cannot run, and ocr.py does not own it
+# anyway - the regex passes live inside extract_contact_data. Asserting them
+# here tested a responsibility this module does not have.
+
+
 class TestProcessBusinessCardFile:
     async def test_missing_file_raises(self):
         from src.services.ocr import process_business_card

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.db.queries import contacts as contact_queries
+from src.db.queries import search as search_queries
 
 
 @pytest.mark.asyncio
@@ -19,12 +20,46 @@ class TestContactCreation:
         assert found.name == "Alice Smith"
         assert found.email == "alice@example.com"
 
-    async def test_search_vector_populated(self, db, make_contact):
+    async def test_contact_is_findable_across_its_fields(self, db, make_contact):
+        """
+        Replaces test_search_vector_populated.
+
+        That test asserted `contact.search_vector is not None` — but no such
+        column exists on Contact, in models.py or in any migration. The write
+        path assigned to the name anyway, and SQLAlchemy permits assignment to
+        unmapped attributes, so it silently created a throwaway Python attribute
+        that was never persisted. The test passed by reading back the value it
+        had just watched being set in memory.
+
+        In other words: the suite was GREEN against a bug, and would have stayed
+        green no matter what the search behaviour did.
+
+        This version asserts the behaviour that was actually wanted — the contact
+        can be found by terms drawn from different fields — through the public
+        search interface, so it cannot pass unless search really works.
+        """
         contact = await make_contact(name="Bob Jones", company="Acme", notes="VIP customer")
-        assert contact.search_vector is not None
-        assert "bob jones" in contact.search_vector
-        assert "acme" in contact.search_vector
-        assert "vip customer" in contact.search_vector
+
+        by_name = await search_queries.search_all(db, "bob jones")
+        assert any(c.id == contact.id for c in by_name["contacts"])
+
+        by_company = await search_queries.search_all(db, "acme")
+        assert any(c.id == contact.id for c in by_company["contacts"])
+
+        by_notes = await search_queries.search_all(db, "vip customer")
+        assert any(c.id == contact.id for c in by_notes["contacts"])
+
+    async def test_terms_may_span_separate_fields(self, db, make_contact):
+        """
+        The old concatenated search_vector required query terms to be contiguous
+        in field order, so a search combining a name and a company silently
+        matched nothing. match_all_terms requires each term to appear in some
+        column, not all of them in one.
+        """
+        contact = await make_contact(name="Bob Jones", company="Acme")
+
+        results = await search_queries.search_all(db, "jones acme")
+        assert any(c.id == contact.id for c in results["contacts"])
 
 
 @pytest.mark.asyncio
@@ -79,11 +114,18 @@ class TestContactUpdate:
         assert updated.company == "NewCorp"
         assert updated.role == "CEO"
 
-    async def test_update_refreshes_search_vector(self, db, make_contact):
+    async def test_update_makes_new_values_searchable(self, db, make_contact):
+        """
+        Replaces test_update_refreshes_search_vector. Same reasoning as above:
+        the original read back an unmapped in-memory attribute. Searching real
+        columns needs no refresh step at all, which is precisely why the
+        denormalized column was removed rather than added.
+        """
         contact = await make_contact(name="Ivy")
         await contact_queries.update_contact(db, contact.id, company="SecretCo")
-        refreshed = await contact_queries.get_contact_by_id(db, contact.id)
-        assert "secretco" in refreshed.search_vector
+
+        results = await search_queries.search_all(db, "secretco")
+        assert any(c.id == contact.id for c in results["contacts"])
 
     async def test_update_nonexistent_returns_none(self, db):
         result = await contact_queries.update_contact(db, "nonexistent-id", name="Ghost")

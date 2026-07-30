@@ -15,6 +15,16 @@ Behaviors:
 
 import pytest
 
+# A syntactically valid UUID that is deliberately never inserted.
+#
+# The 404 tests below previously used "nonexistent-uuid" / "fake-id", which are
+# not UUIDs at all. Now that contact_id path params are constrained to a UUID
+# shape, those strings are rejected as 422 before any lookup happens — so the
+# tests were asserting "absent contact" while actually exercising "malformed id".
+# Two different behaviours, one assertion. They are separated below.
+ABSENT_CONTACT_ID = "00000000-0000-4000-8000-000000000000"
+MALFORMED_CONTACT_ID = "not-a-uuid"
+
 
 @pytest.mark.asyncio
 class TestCreateContact:
@@ -79,8 +89,13 @@ class TestGetContact:
         assert "interactions" in body
 
     async def test_get_nonexistent_returns_404(self, client):
-        resp = await client.get("/api/contacts/nonexistent-uuid")
+        resp = await client.get(f"/api/contacts/{ABSENT_CONTACT_ID}")
         assert resp.status_code == 404
+
+    async def test_get_malformed_id_returns_422(self, client):
+        """A well-formed request for a missing row is 404; a malformed id is 422."""
+        resp = await client.get(f"/api/contacts/{MALFORMED_CONTACT_ID}")
+        assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -98,10 +113,17 @@ class TestUpdateContact:
 
     async def test_update_nonexistent_returns_404(self, client):
         resp = await client.patch(
-            "/api/contacts/fake-id",
+            f"/api/contacts/{ABSENT_CONTACT_ID}",
             json={"name": "Ghost"},
         )
         assert resp.status_code == 404
+
+    async def test_update_malformed_id_returns_422(self, client):
+        resp = await client.patch(
+            f"/api/contacts/{MALFORMED_CONTACT_ID}",
+            json={"name": "Ghost"},
+        )
+        assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -113,8 +135,12 @@ class TestDeleteContact:
         assert resp.json()["success"] is True
 
     async def test_delete_nonexistent_returns_404(self, client):
-        resp = await client.delete("/api/contacts/fake-id")
+        resp = await client.delete(f"/api/contacts/{ABSENT_CONTACT_ID}")
         assert resp.status_code == 404
+
+    async def test_delete_malformed_id_returns_422(self, client):
+        resp = await client.delete(f"/api/contacts/{MALFORMED_CONTACT_ID}")
+        assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -149,5 +175,5 @@ class TestContactReminders:
         assert resp.json()["success"] is True
 
     async def test_set_reminder_nonexistent_returns_404(self, client):
-        resp = await client.post("/api/contacts/fake-id/set-reminder?frequency=weekly")
+        resp = await client.post(f"/api/contacts/{ABSENT_CONTACT_ID}/set-reminder?frequency=weekly")
         assert resp.status_code == 404
