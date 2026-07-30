@@ -77,9 +77,8 @@ class TestDedupUsesConfirmedData:
         )
 
         assert resp.status_code == 200
-        assert (
-            resp.json()["contact_id"] == existing.id
-        ), "the corrected email should have matched the existing contact"
+        # The corrected email must be what dedup matched on.
+        assert resp.json()["contact_id"] == existing.id, "corrected email should match"
 
         after = len(await contact_queries.list_contacts(db, limit=100))
         assert after == before, "no second contact should have been created"
@@ -219,9 +218,8 @@ class TestEmptyStringsBecomeNull:
         )
 
         assert resp2.status_code == 200
-        assert (
-            resp2.json()["contact_id"] == contact_id
-        ), "should merge on the name (neither side has a company), then fill the email"
+        # Merges on the name (neither side has a company), then fills the email.
+        assert resp2.json()["contact_id"] == contact_id, "should merge, then fill email"
 
         merged = await contact_queries.get_contact_by_id(db, contact_id)
         assert merged.email == "ada@analytical.org"

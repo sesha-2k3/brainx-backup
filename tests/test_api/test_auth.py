@@ -227,9 +227,8 @@ class TestRememberMeTokenLifetime:
             s.jwt_secret,
             algorithms=[s.jwt_algorithm],
         )
-        assert (
-            remembered["exp"] > standard["exp"]
-        ), "remember_me must extend the token lifetime, not just be accepted"
+        # Must EXTEND the lifetime, not merely be accepted as a keyword.
+        assert remembered["exp"] > standard["exp"], "remember_me must extend the lifetime"
 
     def test_login_request_accepts_remember_me(self):
         body = LoginRequest(email="a@b.com", password="password123", remember_me=True)
@@ -482,10 +481,9 @@ class TestProtectedRoutesRequireAuth:
     )
     async def test_protected_route_rejects_anonymous_requests(self, anon_client, method, path):
         resp = await getattr(anon_client, method)(path)
-        assert resp.status_code in (
-            401,
-            403,
-        ), f"{method.upper()} {path} must not be reachable without credentials"
+        # 401 or 403: which one depends on the FastAPI version's HTTPBearer
+        # behaviour. The point here is unreachability, not the exact code.
+        assert resp.status_code in (401, 403), f"{method.upper()} {path} must reject anon"
 
     async def test_health_endpoints_stay_public(self, anon_client):
         """Liveness and readiness probes must not require a token."""

@@ -92,7 +92,7 @@ jobs:
         # Pinned. An unpinned `pip install ruff` means a new ruff release can
         # turn a green main red with no change on your side — new rules land in
         # the selected rulesets regularly.
-        run: pip install "ruff==0.14.*"
+        run: pip install "ruff==0.15.5"
 
       - name: Check linting rules
         run: ruff check src/ tests/
