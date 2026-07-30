@@ -2,8 +2,9 @@
 
 import logging
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Path, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,15 +17,16 @@ from src.db.queries import interactions as interaction_queries
 from src.db.queries import proposals as proposal_queries
 from src.db.queries import search as search_queries
 from src.db.queries import tasks as task_queries
-from src.schemas.contacts import ContactCreate, ContactUpdate, ExtractedContactData
+from src.schemas.contacts import ContactCreate, ContactUpdate
 from src.schemas.interactions import InteractionCreate, InteractionUpdate
 from src.schemas.tasks import TaskCreate, TaskUpdate
-from src.services.dedup import find_duplicate, merge_or_create
+from src.services import confirmation as confirmation_service
+from src.services.dedup import find_duplicate
 from src.services.extraction import extract_contact_data
 from src.services.ocr import process_business_card_bytes
 from src.services.transcription import transcribe_audio_bytes
-from src.utils.category import clamp_category
-from src.utils.dates import ensure_aware, parse_relative_date
+from src.utils.dates import ensure_aware
+from src.utils.text import blank_to_none as _blank_to_none
 
 logger = logging.getLogger(__name__)
 # NOTE: the module-level `settings = get_settings()` is gone - it existed only
@@ -36,20 +38,26 @@ router = APIRouter(prefix="/api", tags=["web"])
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 
-def _blank_to_none(value: str | None) -> str | None:
-    """
-    Normalize "" (and whitespace-only) to None.
-
-    HTML forms submit absent fields as empty strings, not as missing keys, so
-    without this an untouched field lands in the DB as "" rather than NULL.
-    That breaks dedup (a "" email never matches a real one), breaks
-    "is this field set?" checks everywhere, and makes NULL vs "" a coin flip
-    depending on whether a contact came from the API or the UI.
-    """
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
+# Path-param type for contact IDs.
+#
+# Route ordering here is load-bearing: /contacts/due-reminders and
+# /contacts/upcoming-reminders are literals that would also match
+# /contacts/{contact_id}, so they must stay declared BEFORE it. That works today
+# purely because of declaration order, which is silent and easy to break by
+# moving a function.
+#
+# Constraining contact_id to a UUID shape doesn't change routing (Starlette
+# matches on path shape, then validates), but it converts the failure mode from
+# a misleading 404 "Contact not found" into an explicit 422 saying the id isn't
+# a UUID. A future literal route accidentally declared too late now announces
+# itself instead of looking like a missing record.
+ContactIdPath = Annotated[
+    str,
+    Path(
+        description="Contact UUID",
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    ),
+]
 
 
 # Request/Response models (web module specific)
@@ -104,7 +112,6 @@ async def process_text_input(
     proposal = await proposal_queries.create_proposal(
         db,
         source_type="text",
-        whatsapp_user_id="web",
         # raw_text preserved alongside the LLM's structured output so it can
         # later be attached to the Interaction as raw_transcript - without
         # this, the user's original wording is discarded the moment
@@ -200,7 +207,6 @@ async def process_file_input(
     proposal = await proposal_queries.create_proposal(
         db,
         source_type=source_type,
-        whatsapp_user_id="web",
         # Same as process_text_input - carry the transcript/OCR text through
         # so it can become the Interaction's raw_transcript on confirm.
         extracted_data={**extracted.model_dump(), "raw_text": raw_text},
@@ -249,90 +255,34 @@ async def confirm_proposal(
     db: AsyncSession = Depends(get_db_for_user),
 ):
     """Confirm a proposal and create/update the contact."""
-    proposal = await proposal_queries.get_proposal_by_id(db, proposal_id)
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found")
-
-    # raw_text was stashed alongside the LLM's structured fields when the
-    # proposal was created; it becomes the Interaction's raw_transcript.
-    raw_text = (proposal.extracted_data or {}).get("raw_text")
-
-    # Build the contact payload from `data` - the values the user actually
-    # confirmed on the review screen - NOT from proposal.extracted_data.
-    #
-    # This previously deduped against the LLM's original extraction while
-    # writing the user's edits, so correcting a misread email on the confirm
-    # screen had no effect on duplicate detection: the match ran on the wrong
-    # value and you'd get a second contact for someone you already had.
-    #
-    # _blank_to_none matters here too: ExtractionPreview initializes every
-    # field to "" and submits the whole form, so an absent email arrives as an
-    # empty string. Stored as "" it never matches a real email on any future
-    # dedup pass, and it makes "has no email" indistinguishable from
-    # "has an email that happens to be blank".
-    confirmed = ExtractedContactData(
-        name=data.name,
-        email=_blank_to_none(data.email),
-        phone=_blank_to_none(data.phone),
-        company=_blank_to_none(data.company),
-        role=_blank_to_none(data.role),
-        website=_blank_to_none(data.website),
-        # clamp, don't pass through: ExtractedContactData.category is typed as
-        # the ContactCategory enum, so Pydantic validates it at construction.
-        # An unrecognized value from an API client would raise here and surface
-        # as a 500. clamp_category() maps anything invalid to None, which is the
-        # same guarantee extraction.py already relies on for LLM output.
-        category=clamp_category(_blank_to_none(data.category)),
-        context=_blank_to_none(data.context),
-    )
-
-    # merge_or_create() is the single source of truth for merge semantics.
-    # This endpoint used to reimplement it inline, minus context-appending and
-    # email/phone normalization, so the two drifted.
-    contact, _is_new = await merge_or_create(db, confirmed)
-
-    interaction = None
-    interaction_summary = _blank_to_none(data.interaction_summary)
-    if interaction_summary:
-        interaction = await interaction_queries.create_interaction(
+    # All logic lives in src/services/confirmation.py. This endpoint only
+    # translates HTTP <-> service types, so the merge/interaction/task behaviour
+    # can be tested without an HTTP request or an authenticated session.
+    try:
+        result = await confirmation_service.confirm_proposal(
             db,
-            contact_id=contact.id,
-            interaction_type="note",
-            summary=interaction_summary,
-            occurred_at=datetime.now(UTC),
-            # The user's original wording, preserved for the "View
-            # Transcription" panel on the contact detail page.
-            raw_transcript=raw_text,
+            proposal_id,
+            confirmation_service.ConfirmationInput(
+                name=data.name,
+                email=data.email,
+                phone=data.phone,
+                company=data.company,
+                role=data.role,
+                website=data.website,
+                category=data.category,
+                context=data.context,
+                interaction_summary=data.interaction_summary,
+                tasks=data.tasks,
+            ),
         )
-
-    created_tasks = []
-    for task_data in data.tasks:
-        title = _blank_to_none(task_data.get("title"))
-        if not title:
-            continue
-
-        due_date = parse_relative_date(task_data["due_date"]) if task_data.get("due_date") else None
-
-        task = await task_queries.create_task(
-            db,
-            title=title,
-            contact_id=contact.id,
-            due_date=due_date,
-        )
-        created_tasks.append(task)
-
-    await proposal_queries.confirm_proposal(
-        db,
-        proposal_id,
-        contact_id=contact.id,
-        interaction_id=interaction.id if interaction else None,
-    )
+    except confirmation_service.ProposalNotFoundError:
+        raise HTTPException(status_code=404, detail="Proposal not found") from None
 
     return {
         "success": True,
-        "contact_id": contact.id,
-        "contact_name": contact.name,
-        "tasks_created": len(created_tasks),
+        "contact_id": result.contact.id,
+        "contact_name": result.contact.name,
+        "tasks_created": len(result.tasks),
     }
 
 
@@ -441,7 +391,7 @@ async def get_upcoming_reminders(
 
 @router.get("/contacts/{contact_id}")
 async def get_contact(
-    contact_id: str,
+    contact_id: ContactIdPath,
     db: AsyncSession = Depends(get_db_for_user),
 ):
     """Get a contact with their interactions."""
@@ -494,7 +444,9 @@ async def create_contact_direct(
         company=_blank_to_none(data.company),
         role=_blank_to_none(data.role),
         website=_blank_to_none(data.website),
-        category=clamp_category(_blank_to_none(data.category)),
+        # No clamp needed: ContactCreate.category is a CategoryField, so an
+        # invalid value was already rejected as a 422 during request parsing.
+        category=data.category,
         context=_blank_to_none(data.context),
         notes=_blank_to_none(data.notes),
     )
@@ -510,7 +462,7 @@ async def create_contact_direct(
 
 @router.patch("/contacts/{contact_id}")
 async def update_contact(
-    contact_id: str,
+    contact_id: ContactIdPath,
     data: ContactUpdate,
     db: AsyncSession = Depends(get_db_for_user),
 ):
@@ -558,7 +510,7 @@ async def update_contact(
 
 @router.delete("/contacts/{contact_id}")
 async def delete_contact(
-    contact_id: str,
+    contact_id: ContactIdPath,
     db: AsyncSession = Depends(get_db_for_user),
 ):
     """Delete a contact and all related data."""
@@ -601,7 +553,7 @@ async def delete_contact(
 
 @router.post("/contacts/{contact_id}/set-reminder")
 async def set_contact_reminder(
-    contact_id: str,
+    contact_id: ContactIdPath,
     frequency: str = Query(..., pattern="^(weekly|every_3_days|every_2_weeks|monthly|none)$"),
     db: AsyncSession = Depends(get_db_for_user),
 ):
@@ -631,7 +583,7 @@ async def set_contact_reminder(
 
 @router.post("/contacts/{contact_id}/mark-contacted")
 async def mark_contact_contacted(
-    contact_id: str,
+    contact_id: ContactIdPath,
     db: AsyncSession = Depends(get_db_for_user),
 ):
     """Mark a contact as contacted and reset their reminder."""
@@ -703,13 +655,18 @@ async def create_task(
     """Create a new task."""
     # reminder_at was silently dropped here even though TaskCreate declares it
     # and the column exists, so reminders set at creation time never fired.
+    #
+    # due_date and reminder_at need no normalization at this point: TaskCreate
+    # types both as FlexibleDateTime, which accepts ISO strings and relative
+    # phrases and guarantees a timezone-aware result. POST and PATCH now share
+    # that one definition instead of parsing dates two different ways.
     task = await task_queries.create_task(
         db,
         title=data.title,
-        contact_id=data.contact_id,
+        contact_id=_blank_to_none(data.contact_id),
         description=data.description,
-        due_date=ensure_aware(data.due_date),
-        reminder_at=ensure_aware(data.reminder_at),
+        due_date=data.due_date,
+        reminder_at=data.reminder_at,
     )
 
     return {
@@ -734,24 +691,28 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    # exclude_unset distinguishes "clear this field" (explicit null) from
+    # "leave it alone" (key absent). The previous `is not None` checks could not
+    # tell them apart, so due_date and reminder_at could be set but never
+    # cleared - the same defect that was fixed on PATCH /contacts.
+    #
+    # due_date and reminder_at arrive already parsed and timezone-aware:
+    # FlexibleDateTime on TaskUpdate handles ISO strings, relative phrases like
+    # "tomorrow", and raises a 422 on anything unparseable. That parsing used to
+    # live here, which is why POST and PATCH disagreed about what a date was.
+    submitted = task_data.model_dump(exclude_unset=True)
     updates = {}
-    if task_data.title is not None:
-        updates["title"] = task_data.title
-    if task_data.description is not None:
-        updates["description"] = task_data.description
-    if task_data.due_date is not None:
-        if task_data.due_date == "":
-            updates["due_date"] = None
-        else:
-            updates["due_date"] = parse_relative_date(task_data.due_date)
-    if task_data.contact_id is not None:
-        if task_data.contact_id == "":
-            updates["contact_id"] = None
-        else:
-            updates["contact_id"] = task_data.contact_id
-    if task_data.reminder_at is not None:
-        # Reset reminder_sent so an edited reminder actually fires again.
-        updates["reminder_at"] = ensure_aware(task_data.reminder_at)
+
+    for field in ("title", "description", "due_date", "reminder_at"):
+        if field in submitted:
+            updates[field] = submitted[field]
+
+    if "contact_id" in submitted:
+        updates["contact_id"] = _blank_to_none(submitted["contact_id"])
+
+    # Reset reminder_sent so an edited reminder actually fires again rather than
+    # being suppressed by the previous send.
+    if "reminder_at" in updates:
         updates["reminder_sent"] = False
 
     if updates:

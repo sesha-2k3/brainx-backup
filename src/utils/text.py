@@ -78,6 +78,22 @@ _URL_PATTERN = re.compile(
 )
 
 
+def blank_to_none(value: str | None) -> str | None:
+    """
+    Normalize "" (and whitespace-only) to None.
+
+    HTML forms submit absent fields as empty strings, not as missing keys, so
+    without this an untouched field lands in the DB as "" rather than NULL. That
+    breaks dedup (a "" email never matches a real one), breaks "is this field
+    set?" checks everywhere, and makes NULL vs "" depend on whether a record
+    arrived via the API or the UI.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 def extract_urls(text: str) -> list[str]:
     """
     Extract website URLs from free text, including scheme-less ones.

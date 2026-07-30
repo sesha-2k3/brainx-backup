@@ -14,7 +14,6 @@ class ProposalResponse(BaseModel):
 
     id: str
     source_type: str
-    whatsapp_user_id: str
     extracted_data: dict
     confidence_score: float | None = None
     status: ProposalStatus
@@ -28,7 +27,7 @@ class ProposalResponse(BaseModel):
 
 
 class ConfirmationCard(BaseModel):
-    """Data for rendering a confirmation card in WhatsApp."""
+    """Data for rendering a confirmation card in the review UI."""
 
     proposal_id: str
     title: str

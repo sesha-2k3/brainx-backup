@@ -12,7 +12,6 @@ async def create_proposal(
     db: AsyncSession,
     *,
     source_type: str,
-    whatsapp_user_id: str,
     extracted_data: dict,
     source_message_id: str | None = None,
     confidence_score: float | None = None,
@@ -20,7 +19,6 @@ async def create_proposal(
     proposal = Proposal(
         source_type=source_type,
         source_message_id=source_message_id,
-        whatsapp_user_id=whatsapp_user_id,
         extracted_data=extracted_data,
         confidence_score=confidence_score,
         status=ProposalStatus.PENDING,
@@ -35,17 +33,18 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: str) -> Proposal | N
     return result.scalar_one_or_none()
 
 
-async def get_pending_proposal_for_user(
-    db: AsyncSession,
-    whatsapp_user_id: str,
-) -> Proposal | None:
-    """Get the most recent pending proposal for a user."""
+async def get_latest_pending_proposal(db: AsyncSession) -> Proposal | None:
+    """
+    Most recent pending proposal for the session's tenant.
+
+    Replaces get_pending_proposal_for_user(whatsapp_user_id), which had zero
+    callers and filtered on a column hardcoded to "web" - so it would have
+    returned another tenant's proposal had the TenantSession filter not been
+    doing the real scoping work anyway. Tenancy is applied automatically here.
+    """
     result = await db.execute(
         select(Proposal)
-        .where(
-            Proposal.whatsapp_user_id == whatsapp_user_id,
-            Proposal.status == ProposalStatus.PENDING,
-        )
+        .where(Proposal.status == ProposalStatus.PENDING)
         .order_by(Proposal.created_at.desc())
         .limit(1)
     )

@@ -1,31 +1,24 @@
-# Web framework
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+# DEPRECATED as a dependency list — pyproject.toml is the single source of truth.
+#
+# This file is kept only so that `pip install -r requirements.txt` still works
+# for anyone with it in a script or Dockerfile. It installs the project itself,
+# which resolves dependencies from pyproject.toml. There is nothing to keep in
+# sync, because there is no second list.
+#
+# Preferred:  uv sync
+# Also works: pip install -e .
+#
+# Why this file was replaced rather than updated:
+#
+#   1. It listed BOTH `jwt` and `PyJWT`. These are different, unrelated PyPI
+#      packages that each install a top-level module named `jwt`, so which one
+#      you get depends on installation order. `PyJWT` is the one the code needs
+#      (src/auth/service.py). pyproject.toml correctly lists only pyjwt.
+#   2. It omitted psycopg2-binary, which pyproject includes for Alembic's
+#      synchronous migration engine.
+#   3. Several entries carried no version floor at all (`bcrypt`, `PyJWT`,
+#      `pydantic[email]`), so a resolver was free to pick anything.
+#
+# Two hand-maintained dependency lists will always drift. One list cannot.
 
-# Database
-sqlalchemy[asyncio]>=2.0.25
-asyncpg>=0.29.0
-alembic>=1.13.0
-
-# HTTP client
-httpx>=0.26.0
-
-# AI/ML services
-groq>=0.4.0
-pytesseract>=0.3.10
-Pillow>=10.2.0
-
-# Scheduling
-apscheduler>=3.10.4
-tenacity>=8.2.3
-
-# Utilities
-python-dateutil>=2.8.2
-phonenumbers>=8.13.0
-python-multipart>=0.0.6
-jwt 
-PyJWT
-bcrypt
-pydantic[email]
+-e .

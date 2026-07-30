@@ -1,8 +1,8 @@
 // Sidebar.jsx — Collapsible left navigation
 
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useTheme } from '../../context/ThemeContext'
-import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/themeContext'
+import { useAuth } from '../../context/authContext'
 
 // Icons as simple SVG components
 const HomeIcon = () => (

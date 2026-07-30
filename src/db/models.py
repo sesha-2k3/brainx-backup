@@ -176,7 +176,6 @@ class Proposal(TenantMixin, Base):
     # Source info
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # voice, text, image
     source_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    whatsapp_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Extracted data
     extracted_data: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -199,10 +198,11 @@ class Proposal(TenantMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("idx_proposals_tenant_status", "tenant_id", "status"),
-        Index("idx_proposals_user", "whatsapp_user_id"),
-    )
+    # idx_proposals_user (on whatsapp_user_id) is gone along with the column.
+    # It indexed a value hardcoded to "web" for every row, so it had zero
+    # selectivity - the planner could never use it, and it cost a write on
+    # every insert. Tenant-scoped lookups go through idx_proposals_tenant_status.
+    __table_args__ = (Index("idx_proposals_tenant_status", "tenant_id", "status"),)
 
 
 class Task(TenantMixin, Base):

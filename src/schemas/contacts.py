@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from src.schemas.contact_category_enums import ContactCategory
+from src.schemas.fields import CategoryField
 
 
 class ContactBase(BaseModel):
@@ -33,7 +34,11 @@ class ContactCreate(BaseModel):
     company: str | None = None
     role: str | None = None
     website: str | None = None
-    category: str | None = None  # str to accept any value from API
+    # Validated against ContactCategory rather than accepting any string. The
+    # old "str to accept any value from API" looseness protected nothing: LLM
+    # output reaches the DB via clamp_category() on the extraction path, never
+    # through this schema. All it did was let a client's typo be stored verbatim.
+    category: CategoryField = None
     context: str | None = None
     notes: str | None = None
 
@@ -47,7 +52,7 @@ class ContactUpdate(BaseModel):
     company: str | None = None
     role: str | None = None
     website: str | None = None
-    category: str | None = None  # str to accept any value from API
+    category: CategoryField = None
     tags: list[str] | None = None
     notes: str | None = None
     context: str | None = None

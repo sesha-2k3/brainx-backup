@@ -1,7 +1,7 @@
 // src/App.jsx
 import { Routes, Route } from 'react-router-dom'
-import { ThemeProvider } from './context/ThemeContext'
-import { AuthProvider } from './context/AuthContext'
+import { ThemeProvider } from './context/ThemeProvider'
+import { AuthProvider } from './context/AuthProvider'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/layout/Layout'
 import ErrorBoundary from './components/ErrorBoundary'

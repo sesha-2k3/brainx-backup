@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from src.db.models import TaskStatus
+from src.schemas.fields import FlexibleDateTime
 
 
 class TaskCreate(BaseModel):
@@ -15,8 +16,11 @@ class TaskCreate(BaseModel):
     title: str
     contact_id: str | None = None
     description: str | None = None
-    due_date: datetime | None = None
-    reminder_at: datetime | None = None
+    # FlexibleDateTime, not datetime: POST previously accepted only a typed
+    # datetime while PATCH accepted relative phrases, so "tomorrow" worked on
+    # one verb and was rejected on the other.
+    due_date: FlexibleDateTime = None
+    reminder_at: FlexibleDateTime = None
 
 
 class TaskUpdate(BaseModel):
@@ -24,9 +28,9 @@ class TaskUpdate(BaseModel):
 
     title: str | None = None
     description: str | None = None
-    due_date: str | None = None  # str to support relative dates like "tomorrow"
+    due_date: FlexibleDateTime = None
     contact_id: str | None = None
-    reminder_at: datetime | None = None
+    reminder_at: FlexibleDateTime = None
 
 
 class TaskResponse(BaseModel):
