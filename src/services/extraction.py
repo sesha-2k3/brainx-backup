@@ -141,6 +141,20 @@ async def extract_contact_data(text: str) -> ExtractedContactData:
 
         # Deterministic fields always win - the LLM was never even asked, so
         # there's nothing to reconcile, just attach the regex results.
+        #
+        # The unconditional None is deliberate, not an oversight. EXTRACTION_PROMPT
+        # does not request email, phone or website at all (see the NOTE above it),
+        # so anything the model volunteers for those fields is unrequested output.
+        # Normalizing to None guarantees the invariant "these three fields come
+        # from regex on the full untruncated text, or they are empty" and closes
+        # the hallucination surface that asking would open.
+        #
+        # Consequence worth knowing: nothing recovers a contact detail the regex
+        # cannot match - "her email is alice at example dot com", or OCR that
+        # renders "@" as "(a)". That is a conscious recall-for-determinism trade,
+        # not a defect. Changing it means asking the LLM for these fields as an
+        # explicit fallback and merging regex-first, which is a design decision
+        # about token cost and trust, not a bug fix.
         extracted.email = emails[0] if emails else None
         extracted.phone = phones[0] if phones else None
         extracted.website = urls[0] if urls else None
